@@ -1,0 +1,5 @@
+google-genai>=2.25.0
+wxPython>=4.2.0
+sounddevice>=0.5.0
+pywin32>=306
+python-dotenv>=1.0.0
