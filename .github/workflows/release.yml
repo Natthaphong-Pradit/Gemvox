@@ -40,7 +40,7 @@ jobs:
         run: |
           python build_release.py
 
-      - name: Upload Assets to GitHub Release
+      - name: Publish GitHub Release and Upload Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -48,5 +48,19 @@ jobs:
           if (-not $tag) {
             $tag = "${{ github.ref_name }}"
           }
-          gh release upload $tag dist/Gemvox_Standalone.exe dist/Gemvox_*_Portable.zip --clobber
+          Write-Host "Publishing release assets for tag $tag..."
+          $releaseExists = $false
+          try {
+            gh release view $tag > $null 2>&1
+            if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+          } catch {
+            $releaseExists = $false
+          }
+
+          if ($releaseExists) {
+            gh release upload $tag dist/Gemvox_Standalone.exe dist/Gemvox_*_Portable.zip --clobber
+          } else {
+            gh release create $tag dist/Gemvox_Standalone.exe dist/Gemvox_*_Portable.zip --title "Gemvox $tag - Accessible Gemini TTS Studio" --notes-file RELEASE_NOTES.md
+          }
+
 
