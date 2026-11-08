@@ -383,8 +383,8 @@ def download_and_install_update(
                 zf.extractall(extract_dir)
             inner_root = _find_extracted_root(extract_dir)
 
-            # Protect user's output folder and .env
-            for protected in ("output", ".env"):
+            # Protect user's output folder, .env, and portable config.json
+            for protected in ("output", ".env", "config.json", "config.json.bak"):
                 prot_path = inner_root / protected
                 if prot_path.is_dir():
                     shutil.rmtree(prot_path, ignore_errors=True)
@@ -419,7 +419,7 @@ def download_and_install_update(
             zf.extractall(extract_dir)
         inner_root = _find_extracted_root(extract_dir)
 
-        protected_names = {"venv", ".venv", ".env", "output", ".git", "__pycache__", "build", "dist"}
+        protected_names = {"venv", ".venv", ".env", "output", ".git", "__pycache__", "build", "dist", "config.json", "config.json.bak"}
         for item in inner_root.iterdir():
             if item.name in protected_names:
                 continue
