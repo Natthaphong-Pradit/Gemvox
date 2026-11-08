@@ -145,7 +145,7 @@ class VoiceReplicationPanel(wx.Panel):
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 self.txt_ref_path.SetValue(dlg.GetPath())
-                announcer.announce(f"Selected reference audio: {dlg.GetFilename()}")
+                announcer.announce(tr("announce_selected_ref_audio", filename=dlg.GetFilename()))
 
     def on_browse_con(self, event):
         with wx.FileDialog(
@@ -156,13 +156,13 @@ class VoiceReplicationPanel(wx.Panel):
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 self.txt_con_path.SetValue(dlg.GetPath())
-                announcer.announce(f"Selected consent audio: {dlg.GetFilename()}")
+                announcer.announce(tr("announce_selected_con_audio", filename=dlg.GetFilename()))
 
     def on_copy_consent(self, event):
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(wx.TextDataObject(MANDATORY_CONSENT_TEXT))
             wx.TheClipboard.Close()
-            announcer.announce("Copied mandatory consent phrase to clipboard.")
+            announcer.announce(tr("announce_copied_consent"))
 
     def on_replicate(self, event):
         name = self.txt_name.GetValue().strip()
@@ -171,20 +171,20 @@ class VoiceReplicationPanel(wx.Panel):
         store_stateful = (self.radio_mode.GetSelection() == 0)
 
         if not name:
-            announcer.announce("Please provide a voice name.")
+            announcer.announce(tr("announce_enter_voice_name"))
             self.txt_name.SetFocus()
             return
         if not ref_path:
-            announcer.announce("Please select reference audio file.")
+            announcer.announce(tr("announce_select_ref_audio"))
             self.btn_browse_ref.SetFocus()
             return
         if not con_path:
-            announcer.announce("Please select consent audio file.")
+            announcer.announce(tr("announce_select_con_audio"))
             self.btn_browse_con.SetFocus()
             return
 
         self.btn_replicate.Enable(False)
-        self.lbl_status.SetLabel("Uploading audio and replicating voice with Gemini...")
+        self.lbl_status.SetLabel(tr("status_replicating"))
 
         def _worker():
             try:
@@ -199,14 +199,14 @@ class VoiceReplicationPanel(wx.Panel):
                 def _ui_update():
                     self.btn_replicate.Enable(True)
                     self.btn_copy_id.Enable(True)
-                    self.lbl_id.SetLabel(f"Assigned ID: {voice_id}")
-                    self.lbl_status.SetLabel("Voice replicated successfully! Stored in your custom voices.")
+                    self.lbl_id.SetLabel(tr("lbl_voice_id_assigned", voice_id=voice_id))
+                    self.lbl_status.SetLabel(tr("status_replicate_success"))
 
                 wx.CallAfter(_ui_update)
             except Exception as e:
                 def _error_update():
                     self.btn_replicate.Enable(True)
-                    self.lbl_status.SetLabel(f"Error: {e}")
+                    self.lbl_status.SetLabel(tr("status_error", error=e))
                 wx.CallAfter(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -216,4 +216,4 @@ class VoiceReplicationPanel(wx.Panel):
             if wx.TheClipboard.Open():
                 wx.TheClipboard.SetData(wx.TextDataObject(self.last_voice_id))
                 wx.TheClipboard.Close()
-                announcer.announce("Copied Voice ID to clipboard.")
+                announcer.announce(tr("announce_copied_voice_id", voice_id=self.last_voice_id))

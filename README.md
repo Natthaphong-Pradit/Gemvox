@@ -23,37 +23,41 @@ The official Google AI Studio web interface is powerful, but its nested web comp
 
 1. **Single-Speaker Text-to-Speech (Ctrl+1)**
    - Verbatim transcript recitation.
-   - Sustained turn-level delivery styles (`speech_metadata.style`: e.g. "cheerful and friendly", "whispered urgently", "calm and relaxed").
+   - Sustained turn-level delivery styles (`speech_metadata.style`: e.g. "cheerful and friendly", "whispered urgently", "calm and relaxed"), including custom user-defined style presets (create with `Alt+C`, delete custom styles with `Alt+D`).
    - Inline vocal tags picker dialog (`<short pause>`, `<sigh>`, `<cough>`, `<whisper>`, `<yawn>`, `<laugh>`, `<throat-clearing>`, etc.).
+   - Open `.txt` text files (`Ctrl+O`), save `.txt` scripts (`Ctrl+Shift+S`), and check Text & Script Statistics (`Ctrl+I` — word count, character count, line count, and estimated speech duration).
    - Model switching between `gemini-3.8-flash-tts` (studio fidelity) and `gemini-3.8-flash-lite-tts` (high-throughput, ultra-low latency).
    - Audition voice preview button (`Alt+U`).
 
 2. **Multi-Speaker Conversational Dialogue (Ctrl+2)**
    - Accessible script format: `SpeakerName: Text [optional style]`
-   - Built-in templates for podcasts and interviews (`Alt+L`, `Alt+N`).
-   - Automatic speaker detection with voice mapping dropdowns.
+   - Built-in templates for podcasts and interviews (`Alt+L`, `Alt+N`), plus `.txt` script loading (`Ctrl+O`) and saving (`Ctrl+Shift+S`).
+   - Automatic speaker detection with voice mapping dropdowns that preserve assigned voices across edits.
    - Generates natural multi-turn conversations in a single audio file.
 
 3. **Voice Design Studio (Ctrl+3)**
    - Create brand-new, persistent vocal personas from natural language descriptions.
    - Specify name, gender, language code, and persona description (e.g., *"A warm astronomer in his 60s with a gentle British accent speaking with quiet wonder"*).
    - Instant playback of returned sample audio preview and persistent `voice_...` ID.
-   - Newly created voices are automatically saved and appear across all voice selectors.
+   - **Real-Time Voice Synchronization**: Newly created voices are automatically saved and appear immediately across all voice selectors (Single-Speaker, Multi-Speaker, Voice Library, and Settings) without restarting the application.
 
 4. **Voice Replication (Ctrl+4)**
    - Replicate an adult speaker's voice from a 10–30s clean reference WAV clip.
    - Mandatory consent phrase helper with one-click clipboard copying:
      > *"I am the owner of this voice and I consent to Google using this voice to create a synthetic voice model."*
-   - Choice between Stateful project storage (`voice_...`) and Stateless keys (`voicekey_...`).
+   - Choice between Stateful project storage (`voice_...`) and Stateless keys (`voicekey_...`), with real-time voice list updates across all tabs.
 
-5. **Voice Library & Extended Search (Ctrl+5)**
-   - Complete built-in catalog of all **30 Featured Studio Voices** (Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat).
+5. **Voice Library, Custom Voice Management & Extended Search (Ctrl+5)**
+   - Complete built-in catalog of all **30 Featured Studio Voices** (Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat) alongside your saved **Custom Voices**.
+   - **Use Selected Voice in TTS (`Alt+Y`)**: Send any studio, custom, or online Extended Library voice directly into the Single-Speaker TTS voice selector.
+   - **Remove Custom Voice (`Alt+R`)**: Cleanly delete custom voices with real-time synchronization across all tabs.
    - Live querying of the Gemini Extended Voice Library by language, gender, domain (Audiobook, Conversational, News), and keywords.
 
-6. **Audio Player & WAV Export**
+6. **Audio Player, Recent Generations History & WAV Export**
    - In-app non-blocking playback (`Alt+P` or `Space`).
-   - One-click WAV export (`Ctrl+S`).
-   - Automatic timestamped audio saving in the output directory.
+   - **Recent Generations History (`Ctrl+H`)**: Browse all generated `.wav` audio takes in your output folder, replay/stop takes, export copies (`Alt+S`), delete old takes (`Alt+D`), or open the output folder directly (`Ctrl+Shift+O`).
+   - One-click WAV export (`Ctrl+S`) and automatic timestamped audio saving in the output directory.
+   - **100% Bilingual Localization (English & Thai)**: Both the visual interface and all spoken Screen Reader announcements / status bar messages are localized in English and Thai.
 
 ---
 
@@ -157,20 +161,21 @@ Design custom voice:
 | `Ctrl+Enter` or `Alt+G` | Generate Speech / Dialogue |
 | `Alt+P` | Play / Stop audio |
 | `Ctrl+S` or `Alt+S` | Save current audio as WAV |
-| `Ctrl+1` | Switch to Single-Speaker TTS tab |
-| `Ctrl+2` | Switch to Multi-Speaker Dialogue tab |
-| `Ctrl+3` | Switch to Voice Design Studio tab |
-| `Ctrl+4` | Switch to Voice Replication tab |
-| `Ctrl+5` | Switch to Voice Library & Search tab |
-| `Ctrl+6` | Switch to Settings & API Key tab |
+| `Ctrl+O` | Open `.txt` Text or Dialogue Script file |
+| `Ctrl+Shift+S` | Save current Text or Dialogue Script as `.txt` file |
+| `Ctrl+H` | Open Recent Generations History dialog |
+| `Ctrl+Shift+O` | Open Output Folder in File Explorer |
+| `Ctrl+I` | Announce Text & Script Statistics (words, characters, lines, duration) |
+| `Ctrl+1` .. `Ctrl+6` | Switch directly to Tabs 1 through 6 |
 | `Alt+T` | Open Tabs menu |
 | `F1` | Open Help & Accessibility Guide dialog |
 | `Alt+X` | Jump to Text input area (Single-Speaker tab) |
 | `Alt+M` | Focus Model selector |
 | `Alt+V` | Focus Voice selector |
-| `Alt+Y` | Focus Style / Emotion input field |
-| `Alt+B` | Open Style Presets dialog |
-| `Alt+C` | Create Custom Style Preset (Single-Speaker) / Test Connection (Settings) |
+| `Alt+Y` | Focus Style / Emotion field (Tab 1) / Use Selected Voice in TTS (Tab 5) |
+| `Alt+B` | Open Style Presets dialog (Tab 1) / Show Built-in & Custom Voices (Tab 5) |
+| `Alt+C` | Create Custom Style Preset (Tab 1) / Copy Voice ID (Tab 5) / Test Connection (Tab 6) |
+| `Alt+R` | Remove Selected Custom Voice (Tab 5) |
 | `Alt+I` | Open Inline Vocal Tag dialog |
 | `Alt+L` | Clear Text in Single-Speaker tab |
 | `Alt+U` | Audition currently selected voice |

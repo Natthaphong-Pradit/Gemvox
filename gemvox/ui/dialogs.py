@@ -1,7 +1,15 @@
+import os
+import shutil
+import subprocess
+import sys
+import wave
+from datetime import datetime
+from pathlib import Path
 import wx
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.core.voice_catalog import INLINE_VOCAL_TAGS, STYLE_PRESETS, get_all_style_presets
+from gemvox.core.audio_player import audio_player
 from gemvox.accessibility import announcer
 from gemvox.ui.theme import (
     style_panel,
@@ -11,6 +19,22 @@ from gemvox.ui.theme import (
     style_button,
     attach_painted_header,
 )
+
+
+def open_output_folder():
+    """Open the configured audio output directory in the OS file explorer."""
+    out_dir = str(config.output_dir.resolve())
+    try:
+        config.output_dir.mkdir(parents=True, exist_ok=True)
+        if hasattr(os, "startfile"):
+            os.startfile(out_dir)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", out_dir])
+        else:
+            subprocess.Popen(["xdg-open", out_dir])
+        announcer.announce(tr("announce_opened_output_dir", path=out_dir))
+    except Exception as e:
+        announcer.announce(tr("status_error", error=e))
 
 
 class InlineTagDialog(wx.Dialog):
@@ -147,11 +171,11 @@ class CreateCustomStyleDialog(wx.Dialog):
         name = self.txt_name.GetValue().strip()
         style = self.txt_style.GetValue().strip()
         if not name:
-            announcer.announce("Please enter a preset name.")
+            announcer.announce(tr("announce_enter_preset_name"))
             self.txt_name.SetFocus()
             return
         if not style:
-            announcer.announce("Please enter a style or delivery instruction.")
+            announcer.announce(tr("announce_enter_preset_style"))
             self.txt_style.SetFocus()
             return
 
@@ -253,7 +277,7 @@ class StylePresetDialog(wx.Dialog):
         if dlg.ShowModal() == wx.ID_OK and dlg.created_name:
             self.refresh_presets(select_name=dlg.created_name)
             self.listbox.SetFocus()
-            announcer.announce(f"Created custom style preset '{dlg.created_name}'.")
+            announcer.announce(tr("announce_created_custom_style", name=dlg.created_name))
         dlg.Destroy()
 
     def on_delete_custom(self, event):
@@ -263,7 +287,7 @@ class StylePresetDialog(wx.Dialog):
             config.remove_custom_style(name)
             self.refresh_presets()
             self.listbox.SetFocus()
-            announcer.announce(f"Deleted custom style preset '{name}'.")
+            announcer.announce(tr("announce_deleted_custom_style", name=name))
 
     def on_apply(self, event):
         sel = self.listbox.GetSelection()
@@ -272,6 +296,232 @@ class StylePresetDialog(wx.Dialog):
             self.EndModal(wx.ID_OK)
         else:
             self.EndModal(wx.ID_CANCEL)
+
+
+class GenerationHistoryDialog(wx.Dialog):
+    """
+    Accessible dialog for browsing, replaying, exporting, and managing generated WAV files
+    in the output folder (zero unlabeled child panels).
+    """
+    def __init__(self, parent):
+        super().__init__(
+            parent,
+            title=tr("dlg_history_title"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
+        )
+        self.files_data = []
+        style_panel(self, accessible_name=tr("dlg_history_title"))
+        self._init_ui()
+        self.refresh_history(announce=False)
+        self.CentreOnParent()
+
+    def _init_ui(self):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        attach_painted_header(
+            self,
+            sizer,
+            title=tr("dlg_history_banner"),
+            subtitle=tr("dlg_history_sub"),
+            badge_text="AUDIO HISTORY"
+        )
+
+        info = wx.StaticText(self, label=tr("dlg_history_info"))
+        style_label(info, "muted")
+        sizer.Add(info, 0, wx.ALL, 12)
+
+        lbl_list = wx.StaticText(self, label=tr("lbl_history_list"))
+        style_label(lbl_list, "section")
+        sizer.Add(lbl_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+
+        self.listbox = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        style_listbox(self.listbox)
+        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        # Action bar
+        act_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_play = wx.Button(self, label=tr("btn_hist_play"))
+        self.btn_save_as = wx.Button(self, label=tr("btn_hist_save_as"))
+        self.btn_delete = wx.Button(self, label=tr("btn_hist_delete"))
+        self.btn_open_folder = wx.Button(self, label=tr("btn_hist_open_folder"))
+        self.btn_refresh = wx.Button(self, label=tr("btn_hist_refresh"))
+
+        style_button(self.btn_play, "success")
+        style_button(self.btn_save_as, "gold")
+        style_button(self.btn_delete, "danger")
+        style_button(self.btn_open_folder, "secondary")
+        style_button(self.btn_refresh, "secondary")
+
+        act_sizer.Add(self.btn_play, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_save_as, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_delete, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_open_folder, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_refresh, 0)
+        sizer.Add(act_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # Bottom Close Button
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        btn_sizer.AddStretchSpacer(1)
+        close_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
+        style_button(close_btn, "primary")
+        btn_sizer.Add(close_btn, 0)
+        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
+        self.SetSizer(sizer)
+        self.SetSize((760, 520))
+
+        self.btn_play.Bind(wx.EVT_BUTTON, self.on_play_stop)
+        self.btn_save_as.Bind(wx.EVT_BUTTON, self.on_save_as)
+        self.btn_delete.Bind(wx.EVT_BUTTON, self.on_delete)
+        self.btn_open_folder.Bind(wx.EVT_BUTTON, lambda e: open_output_folder())
+        self.btn_refresh.Bind(wx.EVT_BUTTON, lambda e: self.refresh_history(announce=True))
+        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_stop)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def _get_wav_duration_from_file(self, path: Path) -> float:
+        try:
+            with wave.open(str(path), "rb") as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                if rate > 0:
+                    return round(frames / float(rate), 2)
+        except Exception:
+            pass
+        return 0.0
+
+    def refresh_history(self, announce: bool = False):
+        self.files_data = []
+        out_dir = config.output_dir
+        wav_files = []
+        try:
+            if out_dir.is_dir():
+                wav_files = sorted(
+                    out_dir.glob("*.wav"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True
+                )
+        except Exception:
+            wav_files = []
+
+        choices = []
+        for p in wav_files:
+            try:
+                st = p.stat()
+                size_kb = max(1, round(st.st_size / 1024))
+                mtime_str = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                dur = self._get_wav_duration_from_file(p)
+                self.files_data.append(p)
+                choices.append(f"{p.name}  |  {dur}s  |  {size_kb} KB  |  {mtime_str}")
+            except Exception:
+                pass
+
+        if choices:
+            self.listbox.Set(choices)
+            self.listbox.SetSelection(0)
+            self.btn_play.Enable(True)
+            self.btn_save_as.Enable(True)
+            self.btn_delete.Enable(True)
+        else:
+            self.listbox.Set([tr("msg_history_empty")])
+            self.listbox.SetSelection(0)
+            self.btn_play.Enable(False)
+            self.btn_save_as.Enable(False)
+            self.btn_delete.Enable(False)
+
+        if announce:
+            announcer.announce(tr("announce_history_count", count=len(self.files_data)))
+
+    def _get_selected_file(self) -> Path | None:
+        sel = self.listbox.GetSelection()
+        if sel != wx.NOT_FOUND and sel < len(self.files_data):
+            return self.files_data[sel]
+        return None
+
+    def on_play_stop(self, event=None):
+        if audio_player.is_playing:
+            audio_player.stop()
+            return
+        target = self._get_selected_file()
+        if target and target.is_file():
+            audio_player.play_file(str(target))
+
+    def on_save_as(self, event=None):
+        target = self._get_selected_file()
+        if not target or not target.is_file():
+            return
+        with wx.FileDialog(
+            self,
+            message=tr("menu_save_audio_help"),
+            defaultDir=str(config.output_dir),
+            defaultFile=target.name,
+            wildcard="WAV Audio (*.wav)|*.wav",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                dest = dlg.GetPath()
+                try:
+                    shutil.copy2(target, dest)
+                    announcer.announce(tr("announce_audio_saved", path=dest))
+                except Exception as e:
+                    announcer.announce(tr("status_error", error=e))
+
+    def on_delete(self, event=None):
+        target = self._get_selected_file()
+        if not target or not target.is_file():
+            return
+        resp = wx.MessageBox(
+            tr("confirm_delete_audio_msg", filename=target.name),
+            tr("confirm_delete_audio_title"),
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+            self
+        )
+        if resp == wx.YES:
+            try:
+                if audio_player.is_playing:
+                    audio_player.stop()
+                target.unlink()
+                announcer.announce(tr("announce_history_deleted", filename=target.name))
+                self.refresh_history(announce=False)
+                self.listbox.SetFocus()
+            except Exception as e:
+                announcer.announce(tr("status_error", error=e))
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        alt = event.AltDown()
+        ctrl = event.ControlDown()
+        shift = event.ShiftDown()
+
+        if not alt and not ctrl and not shift:
+            if key == wx.WXK_RETURN and wx.Window.FindFocus() == self.listbox:
+                self.on_play_stop(None)
+                return
+            if key == wx.WXK_DELETE and wx.Window.FindFocus() == self.listbox:
+                self.on_delete(None)
+                return
+
+        if alt and not ctrl and not shift and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'P' and self.btn_play.IsEnabled():
+                self.on_play_stop(None)
+                return
+            if ch == 'S' and self.btn_save_as.IsEnabled():
+                self.on_save_as(None)
+                return
+            if ch == 'D' and self.btn_delete.IsEnabled():
+                self.on_delete(None)
+                return
+            if ch == 'L':
+                open_output_folder()
+                return
+            if ch == 'R':
+                self.refresh_history(announce=True)
+                return
+            if ch == 'G':
+                self.listbox.SetFocus()
+                return
+
+        event.Skip()
 
 
 # ========================================================================
@@ -605,8 +855,10 @@ HELP_SECTIONS = {
                 "  3. Select the Consent WAV recording (Alt+S / Alt+W) reciting that exact phrase.\n"
                 "  4. Choose Stateful or Stateless mode (Alt+M) and press Alt+V ('Replicate Voice').\n\n"
                 "C. VOICE LIBRARY & EXTENDED SEARCH (Ctrl+5):\n"
-                "  * Browse all 30 built-in Studio Voices (Alt+B) or search the Extended Library online (Alt+X).\n"
-                "  * Press Alt+U (or double-click any voice in the list) to Audition it immediately."
+                "  * Browse all 30 built-in Studio Voices & your Custom Voices (Alt+B), or search online (Alt+X).\n"
+                "  * Press Alt+U (or double-click any voice in the list) to Audition it immediately.\n"
+                "  * Press Alt+Y ('Use Selected Voice in TTS') to send the selected voice directly to Single Speaker TTS.\n"
+                "  * Press Alt+R ('Remove Custom Voice') to delete a custom voice from your saved list."
             )
         },
         {
@@ -623,6 +875,11 @@ HELP_SECTIONS = {
                 "  * Ctrl+Enter          : Generate Speech / Dialogue / Voice Design\n"
                 "  * Alt+P               : Play / Stop current audio immediately\n"
                 "  * Ctrl+S              : Save current audio as WAV file\n"
+                "  * Ctrl+O              : Open / Load .txt script file into active tab\n"
+                "  * Ctrl+Shift+S        : Save current text or dialogue script as .txt file\n"
+                "  * Ctrl+H              : Open Recent Generations History dialog\n"
+                "  * Ctrl+Shift+O        : Open Audio Output Folder in File Explorer\n"
+                "  * Ctrl+I              : Announce Text & Script Statistics (words, chars, est. duration)\n"
                 "  * Ctrl+1 .. Ctrl+6    : Switch directly to Tab 1 through Tab 6 (also Alt+1..6)\n"
                 "  * Ctrl+Tab            : Switch to Next Tab (also Ctrl+PageDown)\n"
                 "  * Ctrl+Shift+Tab      : Switch to Previous Tab (also Ctrl+PageUp)\n"
@@ -643,6 +900,11 @@ HELP_SECTIONS = {
                 "  * Alt+D : Focus Dialogue Script |  Alt+I : Insert Vocal Tag at Cursor\n"
                 "  * Alt+L : Load Podcast Template |  Alt+N : Load Interview Template\n"
                 "  * Alt+K : Update Speakers       |  Alt+G : Generate Dialogue\n\n"
+                "VOICE LIBRARY TAB (CTRL+5):\n"
+                "  * Alt+S : Search Query          |  Alt+X : Search Online Library\n"
+                "  * Alt+B : Show Built-in/Custom  |  Alt+V : Focus Voices List\n"
+                "  * Alt+U : Audition Voice        |  Alt+Y : Use Selected Voice in TTS\n"
+                "  * Alt+C : Copy Voice ID         |  Alt+R : Remove Custom Voice\n\n"
                 "SETTINGS TAB (CTRL+6):\n"
                 "  * Alt+K : Focus API Key         |  Alt+C : Test API Connection\n"
                 "  * Alt+G : Get API Key Online    |  Alt+D : Output Folder\n"
@@ -748,15 +1010,17 @@ HELP_SECTIONS = {
                 "  1. ตั้งชื่อเสียงพูด (Alt+N) เลือกเพศ (Alt+G) และรหัสภาษา (Alt+L)\n"
                 "  2. พิมพ์คำบรรยายบุคลิกเสียงในช่อง Prompt (Alt+D) เช่น อายุ โทนเสียง สำเนียงการพูด\n"
                 "  3. กดปุ่ม Alt+C ('สร้างเสียงพูดใหม่') ระบบจะสร้างรหัส Voice ID ถาวรพร้อมเสียงตัวอย่าง\n"
-                "  4. เสียงที่สร้างเสร็จจะถูกบันทึกเข้าสู่รายการเลือกเสียงในทุกแท็บโดยอัตโนมัติ\n\n"
+                "  4. เสียงที่สร้างเสร็จจะถูกซิงค์เข้าสู่รายการเลือกเสียงในทุกแท็บทันทีโดยไม่ต้องรีสตาร์ทโปรแกรม\n\n"
                 "ข. โคลนนิ่งเสียงพูด (Voice Replication - Ctrl+4):\n"
                 "  1. ตั้งชื่อเสียง (Alt+N) และเลือกไฟล์เสียงอ้างอิง WAV 24kHz ความยาว 10-30 วินาที (Alt+R / Alt+B)\n"
                 "  2. กดปุ่ม Alt+C ('คัดลอกประโยค') เพื่อดูประโยคยืนยันสิทธิ์มาตรฐาน\n"
                 "  3. เลือกไฟล์เสียง WAV ที่เจ้าของเสียงอ่านประโยคยืนยันสิทธิ์นั้น (Alt+S / Alt+W)\n"
                 "  4. เลือกโหมดการจัดเก็บ (Alt+M) แล้วกดปุ่ม Alt+V ('โคลนนิ่งเสียงพูด')\n\n"
                 "ค. คลังเสียงและการค้นหาออนไลน์ (Voice Library - Ctrl+5):\n"
-                "  * แสดงรายชื่อ 30 เสียงสตูดิโอมาตรฐาน (Alt+B) หรือค้นหาจากคลังออนไลน์ (Alt+X)\n"
-                "  * กดปุ่ม Alt+U (หรือกดดับเบิลคลิก) เพื่อทดลองฟังเสียงตัวอย่างได้ทันที"
+                "  * แสดงรายชื่อเสียงสตูดิโอและเสียงส่วนตัว (Alt+B) หรือค้นหาจากคลังออนไลน์ (Alt+X)\n"
+                "  * กดปุ่ม Alt+U (หรือกดดับเบิลคลิก) เพื่อทดลองฟังเสียงตัวอย่างได้ทันที\n"
+                "  * กดปุ่ม Alt+Y ('ใช้เสียงนี้ในหน้าพูดเดี่ยว') เพื่อส่งเสียงที่เลือกไปตั้งใช้งานในแท็บที่ 1 ทันที\n"
+                "  * กดปุ่ม Alt+R ('ลบเสียงส่วนตัว') เพื่อลบเสียงที่สร้างไว้เองออกจากรายการ"
             )
         },
         {
@@ -773,6 +1037,11 @@ HELP_SECTIONS = {
                 "  * Ctrl+Enter          : สั่งสังเคราะห์เสียงพูด / บทสนทนา / ออกแบบเสียง\n"
                 "  * Alt+P               : เล่นเสียง / หยุดเสียงทันที (Non-blocking)\n"
                 "  * Ctrl+S              : บันทึกไฟล์เสียงปัจจุบันเป็นไฟล์ WAV\n"
+                "  * Ctrl+O              : เปิดไฟล์ข้อความ / สคริปต์ (.txt) เข้าสู่แท็บปัจจุบัน\n"
+                "  * Ctrl+Shift+S        : บันทึกข้อความหรือสคริปต์บทสนทนาเป็นไฟล์ .txt\n"
+                "  * Ctrl+H              : เปิดหน้าต่างประวัติไฟล์เสียงที่สร้างล่าสุด (History)\n"
+                "  * Ctrl+Shift+O        : เปิดโฟลเดอร์เก็บไฟล์เสียง (Output Folder) ใน File Explorer\n"
+                "  * Ctrl+I              : อ่านสถิติข้อความ (จำนวนคำ ตัวอักษร และเวลาพูดโดยประมาณ)\n"
                 "  * Ctrl+1 ถึง Ctrl+6    : สลับไปยังแท็บที่ 1 ถึง 6 โดยตรง (หรือกด Alt+1 ถึง 6)\n"
                 "  * Ctrl+Tab            : เลื่อนไปแท็บถัดไป (หรือ Ctrl+PageDown)\n"
                 "  * Ctrl+Shift+Tab      : เลื่อนไปแท็บก่อนหน้า (หรือ Ctrl+PageUp)\n"
@@ -793,6 +1062,11 @@ HELP_SECTIONS = {
                 "  * Alt+D : ช่องสคริปต์บทสนทนา   |  Alt+I : แทรกแท็กเสียงตรงเคอร์เซอร์\n"
                 "  * Alt+L : โหลดเทมเพลตพอดแคสต์  |  Alt+N : โหลดเทมเพลตสัมภาษณ์\n"
                 "  * Alt+K : อัปเดตรายชื่อผู้พูด     |  Alt+G : สังเคราะห์บทสนทนา\n\n"
+                "คีย์ลัดในแท็บคลังเสียงและค้นหา (CTRL+5):\n"
+                "  * Alt+S : ช่องคำค้นหา          |  Alt+X : ค้นหาคลังเสียงออนไลน์\n"
+                "  * Alt+B : แสดงเสียงในตัว/ส่วนตัว |  Alt+V : รายชื่อเสียงพูด\n"
+                "  * Alt+U : ทดลองฟังเสียง        |  Alt+Y : ใช้เสียงนี้ในหน้าพูดเดี่ยว\n"
+                "  * Alt+C : คัดลอกรหัสเสียง       |  Alt+R : ลบเสียงส่วนตัว\n\n"
                 "คีย์ลัดในแท็บการตั้งค่า (CTRL+6):\n"
                 "  * Alt+K : ช่องใส่ API Key      |  Alt+C : ทดสอบการเชื่อมต่อ\n"
                 "  * Alt+G : รับรหัส API Key      |  Alt+D : โฟลเดอร์บันทึกเสียง\n"

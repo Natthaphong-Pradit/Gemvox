@@ -18,13 +18,19 @@ from gemvox.ui.theme import (
 
 
 class VoiceLibraryPanel(wx.Panel):
-    """Panel for browsing the 30 prebuilt studio voices and querying the Extended Voice Library."""
+    """Panel for browsing the 30 prebuilt studio voices, managing custom voices, and querying the Extended Voice Library."""
     def __init__(self, parent):
         super().__init__(parent)
         self.voices_data = []
+        self._showing_remote = False
         style_panel(self, accessible_name=tr("tab_library"))
         self._init_ui()
-        self.load_prebuilt_voices()
+        self.load_prebuilt_voices(announce=False)
+        config.add_voices_listener(self._on_voices_changed)
+
+    def _on_voices_changed(self):
+        if not self._showing_remote:
+            wx.CallAfter(self.load_prebuilt_voices, False)
 
     def _init_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -105,11 +111,20 @@ class VoiceLibraryPanel(wx.Panel):
         # Action Buttons
         act_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_audition = wx.Button(self, label=tr("btn_audition_a"))
+        self.btn_use_voice = wx.Button(self, label=tr("btn_use_voice_y"))
         self.btn_copy_id = wx.Button(self, label=tr("btn_copy_id_c"))
+        self.btn_delete_custom = wx.Button(self, label=tr("btn_delete_voice_r"))
+        self.btn_delete_custom.Enable(False)
+
         style_button(self.btn_audition, "gold")
+        style_button(self.btn_use_voice, "primary")
         style_button(self.btn_copy_id, "secondary")
-        act_sizer.Add(self.btn_audition, 0, wx.RIGHT, 10)
-        act_sizer.Add(self.btn_copy_id, 0)
+        style_button(self.btn_delete_custom, "danger")
+
+        act_sizer.Add(self.btn_audition, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_use_voice, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_copy_id, 0, wx.RIGHT, 8)
+        act_sizer.Add(self.btn_delete_custom, 0)
         main_sizer.Add(act_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Status
@@ -121,14 +136,51 @@ class VoiceLibraryPanel(wx.Panel):
 
         # Bindings
         self.btn_search_remote.Bind(wx.EVT_BUTTON, self.on_search_remote)
-        self.btn_show_prebuilt.Bind(wx.EVT_BUTTON, lambda e: self.load_prebuilt_voices())
+        self.btn_show_prebuilt.Bind(wx.EVT_BUTTON, lambda e: self.load_prebuilt_voices(announce=True))
         self.btn_audition.Bind(wx.EVT_BUTTON, self.on_audition)
+        self.btn_use_voice.Bind(wx.EVT_BUTTON, self.on_use_voice)
         self.btn_copy_id.Bind(wx.EVT_BUTTON, self.on_copy_id)
+        self.btn_delete_custom.Bind(wx.EVT_BUTTON, self.on_delete_custom)
+        self.listbox_voices.Bind(wx.EVT_LISTBOX, self.on_selection_changed)
         self.listbox_voices.Bind(wx.EVT_LISTBOX_DCLICK, self.on_audition)
 
-    def load_prebuilt_voices(self):
+    def _update_action_buttons(self):
+        sel = self.listbox_voices.GetSelection()
+        if sel != wx.NOT_FOUND and sel < len(self.voices_data):
+            is_custom = bool(self.voices_data[sel].get("is_custom", False))
+            self.btn_delete_custom.Enable(is_custom)
+            self.btn_use_voice.Enable(True)
+        else:
+            self.btn_delete_custom.Enable(False)
+            self.btn_use_voice.Enable(False)
+
+    def on_selection_changed(self, event):
+        self._update_action_buttons()
+        event.Skip()
+
+    def load_prebuilt_voices(self, announce: bool = True):
+        self._showing_remote = False
         self.voices_data = []
         choices = []
+
+        custom_saved = config.get("custom_voices", [])
+        for cv in custom_saved:
+            vid = cv.get("id", "")
+            dname = cv.get("display_name", vid)
+            vtype = cv.get("type", "Custom")
+            desc = cv.get("description", "")
+            entry = {
+                "id": vid,
+                "display_name": dname,
+                "language_code": "Custom",
+                "gender": "Custom",
+                "tone": vtype,
+                "description": desc,
+                "is_custom": True
+            }
+            self.voices_data.append(entry)
+            choices.append(f"[Custom] {dname} ({vid}) | Type: {vtype} - {desc}")
+
         for v in PREBUILT_VOICES:
             entry = {
                 "id": v.id,
@@ -136,15 +188,23 @@ class VoiceLibraryPanel(wx.Panel):
                 "language_code": v.language_code,
                 "gender": v.gender,
                 "tone": v.tone,
-                "description": v.description
+                "description": v.description,
+                "is_custom": False
             }
             self.voices_data.append(entry)
             choices.append(f"{v.id:<15} | Tone: {v.tone:<16} | ({v.gender}) - {v.description}")
+
         self.listbox_voices.Set(choices)
         if choices:
             self.listbox_voices.SetSelection(0)
-        self.lbl_status.SetLabel(f"Showing {len(choices)} featured studio voices.")
-        announcer.announce(f"Loaded {len(choices)} studio voices.")
+        self._update_action_buttons()
+
+        total = len(choices)
+        custom_count = len(custom_saved)
+        prebuilt_count = len(PREBUILT_VOICES)
+        self.lbl_status.SetLabel(tr("status_showing_voices", total=total, custom=custom_count, prebuilt=prebuilt_count))
+        if announce:
+            announcer.announce(tr("announce_loaded_voices", total=total, custom=custom_count, prebuilt=prebuilt_count))
 
     def on_search_remote(self, event):
         query = self.txt_search.GetValue().strip()
@@ -153,7 +213,7 @@ class VoiceLibraryPanel(wx.Panel):
         domain = self.combo_domain.GetValue().strip()
 
         self.btn_search_remote.Enable(False)
-        self.lbl_status.SetLabel("Querying Gemini voice library...")
+        self.lbl_status.SetLabel(tr("announce_querying_library"))
 
         def _worker():
             try:
@@ -163,6 +223,7 @@ class VoiceLibraryPanel(wx.Panel):
                     gender=gender if gender != "All" else None,
                     context_domain=domain if domain != "All" else None
                 )
+                self._showing_remote = True
                 self.voices_data = results
                 choices = [
                     f"{v['id']} | {v['display_name']} ({v.get('gender','')}, {v.get('language_code','')}): {v.get('description','')}"
@@ -174,27 +235,31 @@ class VoiceLibraryPanel(wx.Panel):
                     self.listbox_voices.Set(choices)
                     if choices:
                         self.listbox_voices.SetSelection(0)
-                    self.lbl_status.SetLabel(f"Found {len(choices)} voices.")
+                    self._update_action_buttons()
+                    self.lbl_status.SetLabel(tr("announce_found_voices", count=len(choices)))
 
                 wx.CallAfter(_ui_update)
             except Exception as e:
                 def _error_update():
                     self.btn_search_remote.Enable(True)
-                    self.lbl_status.SetLabel(f"Search error: {e}")
+                    self.lbl_status.SetLabel(tr("status_error", error=e))
                 wx.CallAfter(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def get_selected_voice_id(self) -> str:
+    def get_selected_voice_entry(self) -> dict:
         sel = self.listbox_voices.GetSelection()
         if sel != wx.NOT_FOUND and sel < len(self.voices_data):
-            return self.voices_data[sel]["id"]
-        return "Kore"
+            return self.voices_data[sel]
+        return {"id": "Kore", "display_name": "Kore", "description": "", "is_custom": False}
+
+    def get_selected_voice_id(self) -> str:
+        return self.get_selected_voice_entry().get("id", "Kore")
 
     def on_audition(self, event):
         voice_id = self.get_selected_voice_id()
-        announcer.announce(f"Auditioning {voice_id}...")
-        self.lbl_status.SetLabel(f"Auditioning {voice_id}...")
+        announcer.announce(tr("status_auditioning", voice=voice_id))
+        self.lbl_status.SetLabel(tr("status_auditioning", voice=voice_id))
 
         def _worker():
             try:
@@ -205,15 +270,48 @@ class VoiceLibraryPanel(wx.Panel):
                     style="natural and clear"
                 )
                 audio_player.play_wav_bytes(wav_bytes)
-                wx.CallAfter(self.lbl_status.SetLabel, f"Audition complete for {voice_id}.")
+                wx.CallAfter(self.lbl_status.SetLabel, tr("status_audition_done", voice=voice_id))
             except Exception as e:
-                wx.CallAfter(self.lbl_status.SetLabel, f"Audition error: {e}")
+                wx.CallAfter(self.lbl_status.SetLabel, tr("status_error", error=e))
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def on_use_voice(self, event):
+        entry = self.get_selected_voice_entry()
+        voice_id = entry.get("id", "Kore")
+        display_name = entry.get("display_name") or voice_id
+        desc = entry.get("description", "")
+
+        top_win = wx.GetTopLevelParent(self)
+        if hasattr(top_win, "tab_single"):
+            top_win.tab_single.select_voice_by_id(voice_id, display_name=display_name, description=desc)
+        msg = tr("announce_voice_selected_for_tts", voice=display_name)
+        self.lbl_status.SetLabel(msg)
+        announcer.play_sound("success")
+        announcer.announce(msg)
+
+    def on_delete_custom(self, event):
+        entry = self.get_selected_voice_entry()
+        if not entry.get("is_custom"):
+            return
+        voice_id = entry.get("id", "")
+        display_name = entry.get("display_name", voice_id)
+
+        resp = wx.MessageBox(
+            tr("confirm_delete_voice_msg", name=display_name, voice_id=voice_id),
+            tr("confirm_delete_voice_title"),
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+            self
+        )
+        if resp == wx.YES:
+            config.remove_custom_voice(voice_id)
+            self.load_prebuilt_voices(announce=False)
+            self.listbox_voices.SetFocus()
+            announcer.announce(tr("announce_deleted_custom_voice", name=display_name))
 
     def on_copy_id(self, event):
         voice_id = self.get_selected_voice_id()
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(wx.TextDataObject(voice_id))
             wx.TheClipboard.Close()
-            announcer.announce(f"Copied Voice ID {voice_id} to clipboard.")
+            announcer.announce(tr("announce_copied_voice_id", voice_id=voice_id))

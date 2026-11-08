@@ -41,9 +41,14 @@ class MultiSpeakerPanel(wx.Panel):
         self.last_audio_bytes = None
         self.last_saved_path = None
         self.speaker_combos = {}
+        self._voices_cache = []
         style_panel(self, accessible_name=tr("tab_multi"))
         self._init_ui()
         audio_player.add_state_listener(self._on_player_state_change)
+        config.add_voices_listener(self._on_voices_changed)
+
+    def _on_voices_changed(self):
+        wx.CallAfter(self.update_speaker_controls)
 
     def _init_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -71,16 +76,19 @@ class MultiSpeakerPanel(wx.Panel):
         self.btn_load_podcast = wx.Button(self, label=tr("btn_load_podcast"))
         self.btn_load_interview = wx.Button(self, label=tr("btn_load_interview"))
         self.btn_detect_speakers = wx.Button(self, label=tr("btn_update_speakers"))
+        self.btn_stats = wx.Button(self, label=tr("btn_stats"))
 
         style_button(self.btn_insert_tag, "secondary")
         style_button(self.btn_load_podcast, "secondary")
         style_button(self.btn_load_interview, "secondary")
         style_button(self.btn_detect_speakers, "gold")
+        style_button(self.btn_stats, "secondary")
 
         tmpl_sizer.Add(self.btn_insert_tag, 0, wx.RIGHT, 6)
         tmpl_sizer.Add(self.btn_load_podcast, 0, wx.RIGHT, 6)
         tmpl_sizer.Add(self.btn_load_interview, 0, wx.RIGHT, 6)
-        tmpl_sizer.Add(self.btn_detect_speakers, 0)
+        tmpl_sizer.Add(self.btn_detect_speakers, 0, wx.RIGHT, 6)
+        tmpl_sizer.Add(self.btn_stats, 0)
         main_sizer.Add(tmpl_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         # 2. Speaker Voice Mapping Section
@@ -134,6 +142,7 @@ class MultiSpeakerPanel(wx.Panel):
         self.btn_load_podcast.Bind(wx.EVT_BUTTON, self.on_load_podcast)
         self.btn_load_interview.Bind(wx.EVT_BUTTON, self.on_load_interview)
         self.btn_detect_speakers.Bind(wx.EVT_BUTTON, self.on_detect_speakers)
+        self.btn_stats.Bind(wx.EVT_BUTTON, self.on_announce_stats)
         self.btn_generate.Bind(wx.EVT_BUTTON, self.on_generate)
         self.btn_play.Bind(wx.EVT_BUTTON, self.on_play_stop)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
@@ -141,31 +150,53 @@ class MultiSpeakerPanel(wx.Panel):
         # Initial detection
         self.update_speaker_controls()
 
+    def on_announce_stats(self, event=None):
+        stats = tts_engine.calculate_text_stats(self.text_script.GetValue())
+        self.lbl_status.SetLabel(tr("status_text_stats", **stats))
+        announcer.announce(tr("announce_text_stats", **stats))
+
     def on_load_podcast(self, event):
         self.text_script.SetValue(DEFAULT_PODCAST_SCRIPT)
         style_text_ctrl(self.text_script, multiline=True)
         self.update_speaker_controls()
-        announcer.announce("Loaded podcast template.")
+        announcer.announce(tr("announce_loaded_podcast"))
 
     def on_load_interview(self, event):
         self.text_script.SetValue(DEFAULT_INTERVIEW_SCRIPT)
         style_text_ctrl(self.text_script, multiline=True)
         self.update_speaker_controls()
-        announcer.announce("Loaded interview template.")
+        announcer.announce(tr("announce_loaded_interview"))
 
     def on_detect_speakers(self, event):
         count = self.update_speaker_controls()
-        announcer.announce(f"Detected {count} speakers in script.")
+        announcer.announce(tr("announce_detected_speakers", count=count))
+
+    def _get_combo_voice_id(self, combo: wx.ComboBox) -> str:
+        sel = combo.GetSelection()
+        if sel != wx.NOT_FOUND and sel < len(self._voices_cache):
+            return self._voices_cache[sel].id
+        return "Kore"
 
     def update_speaker_controls(self) -> int:
-        """Parses script, discovers speakers, and creates accessible voice dropdowns."""
+        """Parses script, discovers speakers, and creates accessible voice dropdowns while preserving selections."""
+        previous_selections = {}
+        for spk, combo in self.speaker_combos.items():
+            try:
+                previous_selections[spk] = self._get_combo_voice_id(combo)
+            except Exception:
+                pass
+
         script = self.text_script.GetValue()
         _, speakers = tts_engine.parse_dialogue_script(script)
         if not speakers:
             speakers = ["Joe", "Jane"]
 
         voices = get_all_voices()
-        voice_choices = [v.id for v in voices]
+        self._voices_cache = voices
+        voice_choices = [
+            f"{v.display_name} ({v.id})" if v.is_custom else f"{v.id} - {v.tone} ({v.gender})"
+            for v in voices
+        ]
 
         # Clear existing
         self.speakers_grid.Clear(True)
@@ -179,13 +210,14 @@ class MultiSpeakerPanel(wx.Panel):
             combo = wx.ComboBox(self.mapping_box, choices=voice_choices, style=wx.CB_READONLY)
             style_combo(combo)
 
-            def_voice = default_pairings[idx % len(default_pairings)]
+            def_voice = previous_selections.get(spk) or default_pairings[idx % len(default_pairings)]
             sel_idx = 0
             for vi, v in enumerate(voices):
                 if v.id.lower() == def_voice.lower():
                     sel_idx = vi
                     break
-            combo.SetSelection(sel_idx)
+            if voice_choices:
+                combo.SetSelection(sel_idx)
 
             self.speakers_grid.Add(lbl, 0, wx.ALIGN_CENTER_VERTICAL)
             self.speakers_grid.Add(combo, 1, wx.EXPAND)
@@ -204,14 +236,14 @@ class MultiSpeakerPanel(wx.Panel):
 
         turns, speakers = tts_engine.parse_dialogue_script(script)
         if not turns:
-            announcer.announce("No valid dialogue turns found in script.")
+            announcer.announce(tr("announce_no_valid_turns"))
             return
 
         speaker_voice_map = {}
         for spk in speakers:
             combo = self.speaker_combos.get(spk)
             if combo:
-                speaker_voice_map[spk] = combo.GetStringSelection()
+                speaker_voice_map[spk] = self._get_combo_voice_id(combo)
             else:
                 speaker_voice_map[spk] = "Kore"
 
@@ -219,7 +251,7 @@ class MultiSpeakerPanel(wx.Panel):
         model_id = SUPPORTED_MODELS[sel_m]["id"] if sel_m != wx.NOT_FOUND else "gemini-3.8-flash-tts"
 
         self.btn_generate.Enable(False)
-        self.lbl_status.SetLabel(f"Generating dialogue with {len(speakers)} speakers...")
+        self.lbl_status.SetLabel(tr("status_generating_multi", count=len(speakers)))
 
         def _worker():
             try:
@@ -235,7 +267,7 @@ class MultiSpeakerPanel(wx.Panel):
                     self.btn_generate.Enable(True)
                     self.btn_play.Enable(True)
                     self.btn_save.Enable(True)
-                    self.lbl_status.SetLabel(f"Dialogue ready. Duration: {duration}s. Saved to: {out_path}")
+                    self.lbl_status.SetLabel(tr("status_multi_ready", duration=duration, path=out_path))
                     if config.get("autoplay", True):
                         audio_player.play_wav_bytes(wav_bytes)
 
@@ -243,7 +275,7 @@ class MultiSpeakerPanel(wx.Panel):
             except Exception as e:
                 def _error_update():
                     self.btn_generate.Enable(True)
-                    self.lbl_status.SetLabel(f"Error: {e}")
+                    self.lbl_status.SetLabel(tr("status_error", error=e))
                 wx.CallAfter(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -272,7 +304,7 @@ class MultiSpeakerPanel(wx.Panel):
 
         with wx.FileDialog(
             self,
-            message="Save Dialogue Audio",
+            message=tr("menu_save_audio_help"),
             defaultDir=str(config.output_dir),
             defaultFile="gemvox_dialogue.wav",
             wildcard="WAV Audio (*.wav)|*.wav",
@@ -282,8 +314,8 @@ class MultiSpeakerPanel(wx.Panel):
                 dest = dlg.GetPath()
                 with open(dest, "wb") as f:
                     f.write(self.last_audio_bytes)
-                announcer.announce(f"Dialogue audio saved to {dest}")
-                self.lbl_status.SetLabel(f"Saved: {dest}")
+                announcer.announce(tr("announce_audio_saved", path=dest))
+                self.lbl_status.SetLabel(tr("status_saved_path", path=dest))
 
     def on_text_context_menu(self, event):
         """Standard accessible Windows context menu for dialogue script editing."""
@@ -349,7 +381,7 @@ class MultiSpeakerPanel(wx.Panel):
             tag_text = f"{prefix}{tag}{suffix}"
             self.text_script.WriteText(tag_text)
             style_text_ctrl(self.text_script, multiline=True)
-            announcer.announce(f"Inserted tag {tag}")
+            announcer.announce(tr("announce_inserted_tag", tag=tag))
         else:
             self.text_script.SetFocus()
         dlg.Destroy()

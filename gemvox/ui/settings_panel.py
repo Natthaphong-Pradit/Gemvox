@@ -8,7 +8,7 @@ from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.client import client_manager
-from gemvox.core.voice_catalog import SUPPORTED_MODELS, PREBUILT_VOICES
+from gemvox.core.voice_catalog import SUPPORTED_MODELS, get_all_voices
 from gemvox.ui.theme import (
     style_panel,
     style_label,
@@ -42,8 +42,13 @@ class SettingsPanel(wx.Panel):
     """Accessible settings panel for API key, interface language, accessibility, and defaults."""
     def __init__(self, parent):
         super().__init__(parent)
+        self._voices_cache = []
         style_panel(self, accessible_name=tr("tab_settings"))
         self._init_ui()
+        config.add_voices_listener(self._on_voices_changed)
+
+    def _on_voices_changed(self):
+        wx.CallAfter(self.refresh_default_voices)
 
     def _init_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -110,16 +115,9 @@ class SettingsPanel(wx.Panel):
         # 4. Default Voice
         lbl_def_voice = wx.StaticText(cred_box, label=tr("lbl_def_voice"))
         style_label(lbl_def_voice)
-        voice_ids = [v.id for v in PREBUILT_VOICES]
-        self.combo_def_voice = wx.ComboBox(cred_box, choices=voice_ids, style=wx.CB_READONLY)
+        self.combo_def_voice = wx.ComboBox(cred_box, choices=[], style=wx.CB_READONLY)
         style_combo(self.combo_def_voice)
-        def_v = config.get("default_voice", "Kore")
-        sel_v = 0
-        for i, vid in enumerate(voice_ids):
-            if vid.lower() == def_v.lower():
-                sel_v = i
-                break
-        self.combo_def_voice.SetSelection(sel_v)
+        self.refresh_default_voices()
         grid.Add(lbl_def_voice, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.combo_def_voice, 1, wx.EXPAND)
         grid.AddStretchSpacer()
@@ -192,34 +190,57 @@ class SettingsPanel(wx.Panel):
         self.btn_browse_out.Bind(wx.EVT_BUTTON, self.on_browse_output)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save_settings)
 
+    def refresh_default_voices(self):
+        current_id = None
+        sel = self.combo_def_voice.GetSelection()
+        if sel != wx.NOT_FOUND and sel < len(self._voices_cache):
+            current_id = self._voices_cache[sel].id
+
+        voices = get_all_voices()
+        self._voices_cache = voices
+        choices = [
+            f"{v.display_name} ({v.id})" if v.is_custom else v.id
+            for v in voices
+        ]
+        self.combo_def_voice.Set(choices)
+
+        def_v = current_id or config.get("default_voice", "Kore")
+        sel_v = 0
+        for i, v in enumerate(voices):
+            if v.id.lower() == def_v.lower():
+                sel_v = i
+                break
+        if choices:
+            self.combo_def_voice.SetSelection(sel_v)
+
     def on_get_api_key(self, event):
         """Open Google AI Studio Get API Key page directly in the default browser."""
-        announcer.announce("Opening Google AI Studio Get API Key page in your default browser.")
-        self.lbl_status.SetLabel(f"Opening Google AI Studio: {AI_STUDIO_API_KEY_URL}")
+        announcer.announce(tr("announce_opening_ai_studio"))
+        self.lbl_status.SetLabel(tr("status_opening_ai_studio", url=AI_STUDIO_API_KEY_URL))
         if not wx.LaunchDefaultBrowser(AI_STUDIO_API_KEY_URL):
             webbrowser.open(AI_STUDIO_API_KEY_URL)
 
     def on_test_key(self, event):
         key = self.txt_key.GetValue().strip()
         if not key:
-            announcer.announce("API key is empty. Please enter your Gemini API key.")
+            announcer.announce(tr("announce_empty_api_key"))
             self.txt_key.SetFocus()
             return
 
         self.btn_test_key.Enable(False)
-        self.lbl_status.SetLabel("Testing Gemini API connection...")
+        self.lbl_status.SetLabel(tr("status_testing_conn"))
 
         def _worker():
             success, msg = client_manager.validate_key(key)
             def _ui_update():
                 self.btn_test_key.Enable(True)
-                self.lbl_status.SetLabel(f"Connection result: {msg}")
+                self.lbl_status.SetLabel(tr("status_conn_result", msg=msg))
                 if success:
                     announcer.play_sound("success")
-                    announcer.announce("Gemini API connection test successful!")
+                    announcer.announce(tr("announce_conn_success"))
                 else:
                     announcer.play_sound("error")
-                    announcer.announce(f"Connection test failed: {msg}")
+                    announcer.announce(tr("announce_conn_failed", msg=msg))
             wx.CallAfter(_ui_update)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -228,7 +249,7 @@ class SettingsPanel(wx.Panel):
         with wx.DirDialog(self, "Select Output Directory", defaultPath=self.txt_output_dir.GetValue()) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 self.txt_output_dir.SetValue(dlg.GetPath())
-                announcer.announce(f"Selected output directory: {dlg.GetPath()}")
+                announcer.announce(tr("announce_selected_output_dir", path=dlg.GetPath()))
 
     def on_save_settings(self, event):
         config.set("api_key", self.txt_key.GetValue().strip(), auto_save=False)
@@ -239,8 +260,8 @@ class SettingsPanel(wx.Panel):
             config.set("default_model", SUPPORTED_MODELS[sel_m]["id"], auto_save=False)
 
         sel_v = self.combo_def_voice.GetSelection()
-        if sel_v != wx.NOT_FOUND:
-            config.set("default_voice", PREBUILT_VOICES[sel_v].id, auto_save=False)
+        if sel_v != wx.NOT_FOUND and sel_v < len(self._voices_cache):
+            config.set("default_voice", self._voices_cache[sel_v].id, auto_save=False)
 
         sel_lang = self.combo_language.GetSelection()
         if sel_lang != wx.NOT_FOUND and sel_lang < len(self.lang_codes):
@@ -270,14 +291,14 @@ class SettingsPanel(wx.Panel):
     def _toggle_announcements(self, event=None):
         val = not self.chk_announcements.GetValue()
         self.chk_announcements.SetValue(val)
-        announcer.announce(f"Spoken announcements {'enabled' if val else 'disabled'}.")
+        announcer.announce(tr("announce_toggle_announcements_on" if val else "announce_toggle_announcements_off"))
 
     def _toggle_beeps(self, event=None):
         val = not self.chk_beeps.GetValue()
         self.chk_beeps.SetValue(val)
-        announcer.announce(f"Sound cues {'enabled' if val else 'disabled'}.")
+        announcer.announce(tr("announce_toggle_beeps_on" if val else "announce_toggle_beeps_off"))
 
     def _toggle_autoplay(self, event=None):
         val = not self.chk_autoplay.GetValue()
         self.chk_autoplay.SetValue(val)
-        announcer.announce(f"Autoplay {'enabled' if val else 'disabled'}.")
+        announcer.announce(tr("announce_toggle_autoplay_on" if val else "announce_toggle_autoplay_off"))

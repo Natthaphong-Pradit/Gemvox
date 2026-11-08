@@ -1,3 +1,4 @@
+from pathlib import Path
 import wx
 from gemvox import VERSION
 from gemvox.config import config
@@ -10,7 +11,14 @@ from gemvox.ui.voice_design_panel import VoiceDesignPanel
 from gemvox.ui.voice_replication_panel import VoiceReplicationPanel
 from gemvox.ui.voice_library_panel import VoiceLibraryPanel
 from gemvox.ui.settings_panel import SettingsPanel
-from gemvox.ui.dialogs import HelpDialog, InlineTagDialog, StylePresetDialog, WelcomeTourDialog
+from gemvox.ui.dialogs import (
+    HelpDialog,
+    InlineTagDialog,
+    StylePresetDialog,
+    WelcomeTourDialog,
+    GenerationHistoryDialog,
+    open_output_folder,
+)
 from gemvox.ui.theme import (
     StudioColors,
     get_font,
@@ -78,7 +86,12 @@ class MainWindow(wx.Frame):
 
         # File menu
         file_menu = wx.Menu()
+        m_open_script = file_menu.Append(wx.ID_OPEN, tr("menu_open_script"), tr("menu_open_script_help"))
+        m_save_script = file_menu.Append(wx.ID_ANY, tr("menu_save_script"), tr("menu_save_script_help"))
+        file_menu.AppendSeparator()
         m_save = file_menu.Append(wx.ID_SAVE, tr("menu_save_audio"), tr("menu_save_audio_help"))
+        m_history = file_menu.Append(wx.ID_ANY, tr("menu_history"), tr("menu_history_help"))
+        m_open_out = file_menu.Append(wx.ID_ANY, tr("menu_open_output_dir"), tr("menu_open_output_dir_help"))
         file_menu.AppendSeparator()
         m_exit = file_menu.Append(wx.ID_EXIT, tr("menu_exit"), tr("menu_exit_help"))
         menu_bar.Append(file_menu, tr("menu_file"))
@@ -101,6 +114,7 @@ class MainWindow(wx.Frame):
         # Audio menu
         audio_menu = wx.Menu()
         m_play = audio_menu.Append(wx.ID_ANY, tr("menu_play_stop"))
+        m_audio_history = audio_menu.Append(wx.ID_ANY, tr("menu_audio_history"))
         menu_bar.Append(audio_menu, tr("menu_audio"))
 
         # Tabs menu
@@ -122,6 +136,8 @@ class MainWindow(wx.Frame):
         m_style = tools_menu.Append(wx.ID_ANY, tr("menu_browse_style"))
         m_create_style = tools_menu.Append(wx.ID_ANY, tr("menu_create_style"))
         tools_menu.AppendSeparator()
+        m_stats = tools_menu.Append(wx.ID_ANY, tr("menu_text_stats"))
+        tools_menu.AppendSeparator()
         m_tour = tools_menu.Append(wx.ID_ANY, tr("menu_welcome_tour"))
         menu_bar.Append(tools_menu, tr("menu_tools"))
 
@@ -134,7 +150,11 @@ class MainWindow(wx.Frame):
         self.SetMenuBar(menu_bar)
 
         # Bindings
+        self.Bind(wx.EVT_MENU, self.on_menu_open_script, m_open_script)
+        self.Bind(wx.EVT_MENU, self.on_menu_save_script, m_save_script)
         self.Bind(wx.EVT_MENU, self.on_menu_save, m_save)
+        self.Bind(wx.EVT_MENU, self.on_menu_history, m_history)
+        self.Bind(wx.EVT_MENU, self.on_menu_open_output, m_open_out)
         self.Bind(wx.EVT_MENU, self.on_menu_exit, m_exit)
         self.Bind(wx.EVT_MENU, self.on_edit_undo, m_undo)
         self.Bind(wx.EVT_MENU, self.on_edit_redo, m_redo)
@@ -145,6 +165,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_edit_select_all, m_select_all)
         self.Bind(wx.EVT_MENU, self.on_edit_clear, m_clear_field)
         self.Bind(wx.EVT_MENU, self.on_menu_play, m_play)
+        self.Bind(wx.EVT_MENU, self.on_menu_history, m_audio_history)
         self.Bind(wx.EVT_MENU, lambda e: self.switch_tab(0), m_tab1)
         self.Bind(wx.EVT_MENU, lambda e: self.switch_tab(1), m_tab2)
         self.Bind(wx.EVT_MENU, lambda e: self.switch_tab(2), m_tab3)
@@ -156,6 +177,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_menu_tag, m_tag)
         self.Bind(wx.EVT_MENU, self.on_menu_style, m_style)
         self.Bind(wx.EVT_MENU, self.on_menu_create_style, m_create_style)
+        self.Bind(wx.EVT_MENU, self.on_menu_text_stats, m_stats)
         self.Bind(wx.EVT_MENU, lambda e: self._show_first_run_welcome_tour(), m_tour)
         self.Bind(wx.EVT_MENU, self.on_menu_help, m_help)
         self.Bind(wx.EVT_MENU, self.on_menu_about, m_about)
@@ -280,6 +302,25 @@ class MainWindow(wx.Frame):
         if alt and not ctrl and not shift and (key == ord('p') or key == ord('P')):
             self.on_menu_play(None)
             return
+
+        # 5b. Global File & Workflow Shortcuts (Ctrl+O, Ctrl+Shift+S, Ctrl+H, Ctrl+Shift+O, Ctrl+I)
+        if ctrl and not alt and not shift:
+            if key in (ord('o'), ord('O')):
+                self.on_menu_open_script(None)
+                return
+            if key in (ord('h'), ord('H')):
+                self.on_menu_history(None)
+                return
+            if key in (ord('i'), ord('I')):
+                self.on_menu_text_stats(None)
+                return
+        if ctrl and shift and not alt:
+            if key in (ord('s'), ord('S')):
+                self.on_menu_save_script(None)
+                return
+            if key in (ord('o'), ord('O')):
+                self.on_menu_open_output(None)
+                return
 
         # 6. Active Tab Mnemonic Shortcuts (Alt+Key, excluding MenuBar keys F, E, A, T, O, H)
         if alt and not ctrl and not shift and 32 <= key <= 126:
@@ -440,7 +481,7 @@ class MainWindow(wx.Frame):
                     p.on_search_remote(None)
                 return True
             if ch == 'B':
-                p.load_prebuilt_voices()
+                p.load_prebuilt_voices(announce=True)
                 return True
             if ch == 'V':
                 p.listbox_voices.SetFocus()
@@ -448,8 +489,16 @@ class MainWindow(wx.Frame):
             if ch == 'U':
                 p.on_audition(None)
                 return True
+            if ch == 'Y':
+                if p.btn_use_voice.IsEnabled():
+                    p.on_use_voice(None)
+                return True
             if ch == 'C':
                 p.on_copy_id(None)
+                return True
+            if ch == 'R':
+                if p.btn_delete_custom.IsEnabled():
+                    p.on_delete_custom(None)
                 return True
 
         elif sel == 5 and hasattr(self, 'tab_settings'):
@@ -630,12 +679,83 @@ class MainWindow(wx.Frame):
             self.tab_multi.text_script.SetFocus()
             announcer.announce(tr("msg_script_cleared"))
 
-    def on_menu_save(self, event):
+    def on_menu_open_script(self, event=None):
+        with wx.FileDialog(
+            self,
+            tr("dlg_open_script_title"),
+            wildcard="Text & Script files (*.txt;*.md;*.script)|*.txt;*.md;*.script|All files (*.*)|*.*",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                path = Path(dlg.GetPath())
+                try:
+                    content = path.read_text(encoding="utf-8")
+                    sel = self.notebook.GetSelection()
+                    if sel == 1:
+                        self.tab_multi.text_script.SetValue(content)
+                        self.tab_multi.update_speaker_controls(announce=False)
+                        self.tab_multi.text_script.SetFocus()
+                    else:
+                        if sel != 0:
+                            self.switch_tab(0)
+                        self.tab_single.text_ctrl.SetValue(content)
+                        self.tab_single.text_ctrl.SetFocus()
+                    msg = tr("announce_script_loaded", filename=path.name)
+                    announcer.announce(msg)
+                    self.SetStatusText(msg, 0)
+                except Exception as e:
+                    err_msg = tr("announce_script_error", error=str(e))
+                    announcer.announce(err_msg)
+                    self.SetStatusText(err_msg, 0)
+
+    def on_menu_save_script(self, event=None):
+        sel = self.notebook.GetSelection()
+        if sel == 1:
+            content = self.tab_multi.text_script.GetValue()
+            default_name = "dialogue_script.txt"
+        else:
+            content = self.tab_single.text_ctrl.GetValue()
+            default_name = "speech_script.txt"
+        with wx.FileDialog(
+            self,
+            tr("dlg_save_script_title"),
+            defaultFile=default_name,
+            wildcard="Text files (*.txt)|*.txt|All files (*.*)|*.*",
+            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                path = Path(dlg.GetPath())
+                try:
+                    path.write_text(content, encoding="utf-8")
+                    msg = tr("announce_script_saved", path=str(path))
+                    announcer.announce(msg)
+                    self.SetStatusText(msg, 0)
+                except Exception as e:
+                    err_msg = tr("announce_script_error", error=str(e))
+                    announcer.announce(err_msg)
+                    self.SetStatusText(err_msg, 0)
+
+    def on_menu_save(self, event=None):
         sel = self.notebook.GetSelection()
         if sel == 0:
             self.tab_single.on_save()
         elif sel == 1:
             self.tab_multi.on_save()
+
+    def on_menu_history(self, event=None):
+        dlg = GenerationHistoryDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+    def on_menu_open_output(self, event=None):
+        open_output_folder()
+
+    def on_menu_text_stats(self, event=None):
+        sel = self.notebook.GetSelection()
+        if sel == 1:
+            self.tab_multi.on_announce_stats(None)
+        else:
+            self.tab_single.on_announce_stats(None)
 
     def on_menu_play(self, event=None):
         if audio_player.is_playing:
@@ -682,7 +802,8 @@ class MainWindow(wx.Frame):
             "Designed specifically for blind, visually impaired, and sighted creators\n"
             "with both screen reader accessibility and luxury studio aesthetics.\n\n"
             "Supports Gemini 3.8 Flash TTS, Multi-Speaker Dialogue,\n"
-            "Voice Design, Voice Replication, and Voice Library browsing.\n\n"
+            "Voice Design, Voice Replication, Voice Library management,\n"
+            "Recent Generations History, and Bilingual (English/Thai) Screen Reader Announcements.\n\n"
             "Includes full standard Windows text editing commands (Undo, Redo,\n"
             "Cut, Copy, Paste, Select All, custom style presets, and precision vocal tag insertion).",
             "About Gemvox",

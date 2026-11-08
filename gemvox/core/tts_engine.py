@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 from gemvox.config import config
+from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.client import client_manager
 from gemvox.core.voice_catalog import find_voice
@@ -18,6 +19,38 @@ class TTSEngine:
 
     def __init__(self):
         pass
+
+    def calculate_text_stats(self, text: str) -> Dict[str, int]:
+        """
+        Calculate character count, word count (supporting both English and Thai script),
+        line count, and estimated speaking duration in seconds.
+        """
+        raw = text.strip()
+        if not raw:
+            return {"chars": 0, "words": 0, "lines": 0, "seconds": 0}
+
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        chars = len(raw)
+
+        # Clean vocal tags <...> and speaker prefixes/styles for speech duration estimation
+        cleaned = re.sub(r"<[^>]+>", " ", raw)
+        cleaned = re.sub(r"\[[^\]]+\]", " ", cleaned).strip()
+
+        # Count Thai characters vs space-separated words
+        thai_chars = len(re.findall(r"[\u0E00-\u0E7F]", cleaned))
+        non_thai_text = re.sub(r"[\u0E00-\u0E7F]+", " ", cleaned)
+        en_words = len(non_thai_text.split())
+        approx_thai_words = max(1, round(thai_chars / 5.5)) if thai_chars > 0 else 0
+        total_words = en_words + approx_thai_words
+
+        # Estimate speaking rate (~2.5 words/sec, minimum 1s for non-empty text)
+        est_seconds = max(1, round(total_words / 2.5))
+        return {
+            "chars": chars,
+            "words": total_words,
+            "lines": len(lines),
+            "seconds": est_seconds
+        }
 
     def _get_timestamped_filename(self, prefix: str = "gemvox") -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -51,7 +84,7 @@ class TTSEngine:
         client = client_manager.get_client()
 
         announcer.play_sound("start")
-        announcer.announce(f"Synthesizing with voice {voice}...")
+        announcer.announce(tr("announce_synthesizing_single", voice=voice))
 
         # Construct input payload
         content_item: Dict[str, Any] = {
@@ -86,7 +119,7 @@ class TTSEngine:
             )
         except Exception as e:
             announcer.play_sound("error")
-            err = f"Gemini TTS generation error: {e}"
+            err = tr("announce_tts_error", error=e)
             announcer.announce(err)
             raise RuntimeError(err) from e
 
@@ -104,7 +137,7 @@ class TTSEngine:
             f.write(wav_bytes)
 
         announcer.play_sound("success")
-        announcer.announce(f"Audio ready in {elapsed} seconds. Duration: {duration} seconds.")
+        announcer.announce(tr("announce_single_ready", elapsed=elapsed, duration=duration))
 
         return wav_bytes, out_path, duration
 
@@ -130,7 +163,7 @@ class TTSEngine:
         speakers_count = len(speaker_voice_map)
         turns_count = len(turns)
         announcer.play_sound("start")
-        announcer.announce(f"Synthesizing dialogue with {speakers_count} speakers and {turns_count} turns...")
+        announcer.announce(tr("announce_synthesizing_multi", speakers=speakers_count, turns=turns_count))
 
         content_items = []
         for turn in turns:
@@ -184,7 +217,7 @@ class TTSEngine:
             )
         except Exception as e:
             announcer.play_sound("error")
-            err = f"Multi-speaker dialogue error: {e}"
+            err = tr("announce_multi_error", error=e)
             announcer.announce(err)
             raise RuntimeError(err) from e
 
@@ -201,7 +234,7 @@ class TTSEngine:
             f.write(wav_bytes)
 
         announcer.play_sound("success")
-        announcer.announce(f"Dialogue ready in {elapsed} seconds. Duration: {duration} seconds.")
+        announcer.announce(tr("announce_multi_ready", elapsed=elapsed, duration=duration))
 
         return wav_bytes, out_path, duration
 
@@ -268,7 +301,7 @@ class TTSEngine:
         client = client_manager.get_client()
 
         announcer.play_sound("start")
-        announcer.announce(f"Designing custom voice '{display_name}'...")
+        announcer.announce(tr("announce_designing_voice", name=display_name))
 
         voice_payload = {
             "model": model,
@@ -288,7 +321,7 @@ class TTSEngine:
             )
         except Exception as e:
             announcer.play_sound("error")
-            err = f"Voice design error: {e}"
+            err = tr("announce_design_error", error=e)
             announcer.announce(err)
             raise RuntimeError(err) from e
 
@@ -311,7 +344,7 @@ class TTSEngine:
         )
 
         announcer.play_sound("success")
-        announcer.announce(f"Voice designed successfully. Assigned Voice ID: {voice_id}")
+        announcer.announce(tr("announce_design_ready", voice_id=voice_id))
 
         return voice_id, sample_bytes, preview_path
 
@@ -334,7 +367,7 @@ class TTSEngine:
 
         client = client_manager.get_client()
         announcer.play_sound("start")
-        announcer.announce(f"Replicating voice '{display_name}'...")
+        announcer.announce(tr("announce_replicating_voice", name=display_name))
 
         with open(reference_audio_path, "rb") as f:
             ref_b64 = base64.b64encode(f.read()).decode("utf-8")
@@ -364,7 +397,7 @@ class TTSEngine:
             )
         except Exception as e:
             announcer.play_sound("error")
-            err = f"Voice replication error: {e}"
+            err = tr("announce_replicate_error", error=e)
             announcer.announce(err)
             raise RuntimeError(err) from e
 
@@ -378,7 +411,7 @@ class TTSEngine:
         )
 
         announcer.play_sound("success")
-        announcer.announce(f"Voice replicated successfully. Assigned ID: {voice_identifier}")
+        announcer.announce(tr("announce_replicate_ready", voice_id=voice_identifier))
 
         return voice_identifier
 
@@ -392,7 +425,7 @@ class TTSEngine:
     ) -> List[Dict[str, Any]]:
         """Queries the Gemini Extended Voice Library."""
         client = client_manager.get_client()
-        announcer.announce("Querying Gemini voice library...")
+        announcer.announce(tr("announce_querying_library"))
 
         kwargs: Dict[str, Any] = {"page_size": page_size}
         if search_query and search_query.strip():
@@ -417,10 +450,10 @@ class TTSEngine:
                     "pitch": getattr(v, "pitch", ""),
                     "description": getattr(v, "description", "")
                 })
-            announcer.announce(f"Found {len(results)} voices.")
+            announcer.announce(tr("announce_found_voices", count=len(results)))
             return results
         except Exception as e:
-            err = f"Voice library query error: {e}"
+            err = tr("announce_library_error", error=e)
             announcer.announce(err)
             raise RuntimeError(err) from e
 

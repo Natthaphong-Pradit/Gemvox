@@ -30,6 +30,10 @@ class SingleSpeakerPanel(wx.Panel):
         style_panel(self, accessible_name=tr("tab_single"))
         self._init_ui()
         audio_player.add_state_listener(self._on_player_state_change)
+        config.add_voices_listener(self._on_voices_changed)
+
+    def _on_voices_changed(self):
+        wx.CallAfter(self.refresh_voices)
 
     def _init_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -48,14 +52,17 @@ class SingleSpeakerPanel(wx.Panel):
         self.text_ctrl.Bind(wx.EVT_CONTEXT_MENU, self.on_text_context_menu)
         main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 12)
 
-        # Vocal Tag Insertion bar
+        # Vocal Tag Insertion & Text Tools bar
         tag_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_insert_tag = wx.Button(self, label=tr("btn_insert_tag_i"))
         self.btn_clear = wx.Button(self, label=tr("btn_clear_text"))
+        self.btn_stats = wx.Button(self, label=tr("btn_stats"))
         style_button(self.btn_insert_tag, "secondary")
         style_button(self.btn_clear, "secondary")
+        style_button(self.btn_stats, "secondary")
         tag_sizer.Add(self.btn_insert_tag, 0, wx.RIGHT, 8)
-        tag_sizer.Add(self.btn_clear, 0)
+        tag_sizer.Add(self.btn_clear, 0, wx.RIGHT, 8)
+        tag_sizer.Add(self.btn_stats, 0)
         main_sizer.Add(tag_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         # 2. Options Card: Model, Voice, Style
@@ -144,6 +151,7 @@ class SingleSpeakerPanel(wx.Panel):
         # Bindings
         self.btn_insert_tag.Bind(wx.EVT_BUTTON, self.on_insert_tag)
         self.btn_clear.Bind(wx.EVT_BUTTON, self.on_clear)
+        self.btn_stats.Bind(wx.EVT_BUTTON, self.on_announce_stats)
         self.btn_browse_style.Bind(wx.EVT_BUTTON, self.on_browse_style)
         self.btn_create_style.Bind(wx.EVT_BUTTON, self.on_create_custom_style)
         self.btn_audition.Bind(wx.EVT_BUTTON, self.on_audition_voice)
@@ -151,23 +159,46 @@ class SingleSpeakerPanel(wx.Panel):
         self.btn_play.Bind(wx.EVT_BUTTON, self.on_play_stop)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
 
-    def refresh_voices(self):
+    def refresh_voices(self, select_voice_id: str = None):
         """Populate the voice combo box with all prebuilt and custom voices."""
+        if select_voice_id is None and hasattr(self, " _voices_cache") and self.combo_voice.GetCount() > 0:
+            select_voice_id = self.get_selected_voice_id()
+        elif select_voice_id is None and self.combo_voice.GetCount() > 0:
+            select_voice_id = self.get_selected_voice_id()
+
         voices = get_all_voices()
-        choices = [f"{v.id} - {v.tone} ({v.gender})" for v in voices]
+        self._voices_cache = voices
+        choices = []
+        for v in voices:
+            if v.is_custom:
+                choices.append(f"{v.display_name} ({v.id}) - {v.tone}")
+            else:
+                choices.append(f"{v.id} - {v.tone} ({v.gender})")
         self.combo_voice.Set(choices)
 
-        def_voice = config.get("default_voice", "Kore")
+        target_voice = select_voice_id or config.get("default_voice", "Kore")
         sel_idx = 0
         for i, v in enumerate(voices):
-            if v.id.lower() == def_voice.lower():
+            if v.id.lower() == target_voice.lower():
                 sel_idx = i
                 break
         if choices:
             self.combo_voice.SetSelection(sel_idx)
 
+    def select_voice_by_id(self, voice_id: str, display_name: str = None, description: str = ""):
+        """Select a voice by ID in the combo box, adding it to custom voices if it is from the online library."""
+        found = find_voice(voice_id)
+        if not found:
+            config.add_custom_voice(
+                voice_id=voice_id,
+                display_name=display_name or voice_id,
+                voice_type="Extended Library",
+                description=description
+            )
+        self.refresh_voices(select_voice_id=voice_id)
+
     def get_selected_voice_id(self) -> str:
-        voices = get_all_voices()
+        voices = getattr(self, "_voices_cache", None) or get_all_voices()
         sel = self.combo_voice.GetSelection()
         if sel != wx.NOT_FOUND and sel < len(voices):
             return voices[sel].id
@@ -178,6 +209,11 @@ class SingleSpeakerPanel(wx.Panel):
         if sel != wx.NOT_FOUND and sel < len(SUPPORTED_MODELS):
             return SUPPORTED_MODELS[sel]["id"]
         return "gemini-3.8-flash-tts"
+
+    def on_announce_stats(self, event=None):
+        stats = tts_engine.calculate_text_stats(self.text_ctrl.GetValue())
+        self.lbl_status.SetLabel(tr("status_text_stats", **stats))
+        announcer.announce(tr("announce_text_stats", **stats))
 
     def on_text_context_menu(self, event):
         """Standard accessible Windows context menu for text editing."""
@@ -243,7 +279,7 @@ class SingleSpeakerPanel(wx.Panel):
             tag_text = f"{prefix}{tag}{suffix}"
             self.text_ctrl.WriteText(tag_text)
             style_text_ctrl(self.text_ctrl, multiline=True)
-            announcer.announce(f"Inserted tag {tag}")
+            announcer.announce(tr("announce_inserted_tag", tag=tag))
         else:
             self.text_ctrl.SetFocus()
         dlg.Destroy()
@@ -259,7 +295,7 @@ class SingleSpeakerPanel(wx.Panel):
         if dlg.ShowModal() == wx.ID_OK and dlg.selected_style:
             self.txt_style.SetValue(dlg.selected_style)
             self.txt_style.SetFocus()
-            announcer.announce(f"Applied style: {dlg.selected_style}")
+            announcer.announce(tr("announce_applied_style", style=dlg.selected_style))
         dlg.Destroy()
 
     def on_create_custom_style(self, event=None):
@@ -268,8 +304,8 @@ class SingleSpeakerPanel(wx.Panel):
         if dlg.ShowModal() == wx.ID_OK and dlg.created_style:
             self.txt_style.SetValue(dlg.created_style)
             self.txt_style.SetFocus()
-            self.lbl_status.SetLabel(f"Saved custom style preset '{dlg.created_name}' -> \"{dlg.created_style}\"")
-            announcer.announce(f"Custom style preset '{dlg.created_name}' saved and added to Browse Styles.")
+            self.lbl_status.SetLabel(tr("status_saved_custom_style", name=dlg.created_name, style=dlg.created_style))
+            announcer.announce(tr("announce_saved_custom_style", name=dlg.created_name))
         dlg.Destroy()
 
     def on_audition_voice(self, event):
@@ -277,7 +313,7 @@ class SingleSpeakerPanel(wx.Panel):
         model_id = self.get_selected_model_id()
         audition_phrase = f"Hello, I am {voice_id}. This is a preview of my voice."
 
-        self.lbl_status.SetLabel(f"Auditioning voice {voice_id}...")
+        self.lbl_status.SetLabel(tr("status_auditioning", voice=voice_id))
 
         def _worker():
             try:
@@ -288,9 +324,9 @@ class SingleSpeakerPanel(wx.Panel):
                     model=model_id
                 )
                 audio_player.play_wav_bytes(wav_bytes)
-                wx.CallAfter(self.lbl_status.SetLabel, f"Auditioning {voice_id} complete.")
+                wx.CallAfter(self.lbl_status.SetLabel, tr("status_audition_done", voice=voice_id))
             except Exception as e:
-                wx.CallAfter(self.lbl_status.SetLabel, f"Error: {e}")
+                wx.CallAfter(self.lbl_status.SetLabel, tr("status_error", error=e))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -306,7 +342,7 @@ class SingleSpeakerPanel(wx.Panel):
         style = self.txt_style.GetValue().strip()
 
         self.btn_generate.Enable(False)
-        self.lbl_status.SetLabel(f"Generating speech with voice {voice_id}...")
+        self.lbl_status.SetLabel(tr("status_generating_single", voice=voice_id))
 
         def _worker():
             try:
@@ -323,7 +359,7 @@ class SingleSpeakerPanel(wx.Panel):
                     self.btn_generate.Enable(True)
                     self.btn_play.Enable(True)
                     self.btn_save.Enable(True)
-                    self.lbl_status.SetLabel(f"Audio ready. Duration: {duration}s. Saved to: {out_path}")
+                    self.lbl_status.SetLabel(tr("status_single_ready", duration=duration, path=out_path))
                     if config.get("autoplay", True):
                         audio_player.play_wav_bytes(wav_bytes)
 
@@ -331,7 +367,7 @@ class SingleSpeakerPanel(wx.Panel):
             except Exception as e:
                 def _error_update():
                     self.btn_generate.Enable(True)
-                    self.lbl_status.SetLabel(f"Error: {e}")
+                    self.lbl_status.SetLabel(tr("status_error", error=e))
                 wx.CallAfter(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -351,7 +387,7 @@ class SingleSpeakerPanel(wx.Panel):
         default_name = f"gemvox_speech_{self.get_selected_voice_id().lower()}.wav"
         with wx.FileDialog(
             self,
-            message="Save Speech Audio",
+            message=tr("menu_save_audio_help"),
             defaultDir=str(config.output_dir),
             defaultFile=default_name,
             wildcard="WAV Audio (*.wav)|*.wav",
@@ -361,8 +397,8 @@ class SingleSpeakerPanel(wx.Panel):
                 dest = dlg.GetPath()
                 with open(dest, "wb") as f:
                     f.write(self.last_audio_bytes)
-                announcer.announce(f"Audio saved to {dest}")
-                self.lbl_status.SetLabel(f"Saved: {dest}")
+                announcer.announce(tr("announce_audio_saved", path=dest))
+                self.lbl_status.SetLabel(tr("status_saved_path", path=dest))
 
     def _on_player_state_change(self, is_playing: bool):
         def _update():

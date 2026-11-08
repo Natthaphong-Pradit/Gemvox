@@ -169,7 +169,7 @@ class VoiceDesignPanel(wx.Panel):
         self.txt_lang.SetValue(s["lang"])
         self.txt_prompt.SetValue(s["prompt"])
         style_text_ctrl(self.txt_prompt, multiline=True)
-        announcer.announce(f"Loaded sample: {s['name']}")
+        announcer.announce(tr("announce_loaded_sample", name=s["name"]))
 
     def on_create_voice(self, event):
         name = self.txt_name.GetValue().strip()
@@ -178,16 +178,16 @@ class VoiceDesignPanel(wx.Panel):
         lang = self.txt_lang.GetValue().strip()
 
         if not name:
-            announcer.announce("Please provide a name for the voice.")
+            announcer.announce(tr("announce_enter_voice_name"))
             self.txt_name.SetFocus()
             return
         if not prompt:
-            announcer.announce("Please provide a persona prompt description.")
+            announcer.announce(tr("announce_enter_persona_prompt"))
             self.txt_prompt.SetFocus()
             return
 
         self.btn_create.Enable(False)
-        self.lbl_status.SetLabel(f"Designing custom voice '{name}'...")
+        self.lbl_status.SetLabel(tr("announce_designing_voice", name=name))
 
         def _worker():
             try:
@@ -205,8 +205,8 @@ class VoiceDesignPanel(wx.Panel):
                     self.btn_play_preview.Enable(bool(sample_bytes))
                     self.btn_copy_id.Enable(bool(voice_id))
                     self.btn_save_wav.Enable(bool(sample_bytes))
-                    self.lbl_id.SetLabel(f"Assigned Voice ID: {voice_id}")
-                    self.lbl_status.SetLabel("Voice designed successfully. Saved to your custom voices.")
+                    self.lbl_id.SetLabel(tr("lbl_voice_id_assigned", voice_id=voice_id))
+                    self.lbl_status.SetLabel(tr("status_design_success"))
                     if sample_bytes and config.get("autoplay", True):
                         audio_player.play_wav_bytes(sample_bytes)
 
@@ -214,7 +214,7 @@ class VoiceDesignPanel(wx.Panel):
             except Exception as e:
                 def _error_update():
                     self.btn_create.Enable(True)
-                    self.lbl_status.SetLabel(f"Error: {e}")
+                    self.lbl_status.SetLabel(tr("status_error", error=e))
                 wx.CallAfter(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
@@ -241,14 +241,14 @@ class VoiceDesignPanel(wx.Panel):
             if wx.TheClipboard.Open():
                 wx.TheClipboard.SetData(wx.TextDataObject(self.last_voice_id))
                 wx.TheClipboard.Close()
-                announcer.announce(f"Copied Voice ID {self.last_voice_id} to clipboard.")
+                announcer.announce(tr("announce_copied_voice_id", voice_id=self.last_voice_id))
 
     def on_save_wav(self, event):
         if not self.last_sample_bytes:
             return
         with wx.FileDialog(
             self,
-            message="Save Voice Sample Preview",
+            message=tr("menu_save_audio_help"),
             defaultDir=str(config.output_dir),
             defaultFile=f"preview_{self.txt_name.GetValue().strip().lower().replace(' ', '_')}.wav",
             wildcard="WAV Audio (*.wav)|*.wav",
@@ -258,4 +258,4 @@ class VoiceDesignPanel(wx.Panel):
                 dest = dlg.GetPath()
                 with open(dest, "wb") as f:
                     f.write(self.last_sample_bytes)
-                announcer.announce(f"Saved sample preview to {dest}")
+                announcer.announce(tr("announce_saved_preview", path=dest))

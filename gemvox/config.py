@@ -80,6 +80,7 @@ class Config:
         self.data = DEFAULT_CONFIG.copy()
         self.data["custom_voices"] = []
         self.data["custom_styles"] = []
+        self._voices_listeners = []
         self._existed_before_load = False
         self.load()
 
@@ -250,6 +251,23 @@ class Config:
             pass
         return out
 
+    def add_voices_listener(self, callback):
+        """Register a callback invoked whenever custom voices are added or removed."""
+        if callback not in self._voices_listeners:
+            self._voices_listeners.append(callback)
+
+    def remove_voices_listener(self, callback):
+        """Unregister a custom voices listener callback."""
+        if callback in self._voices_listeners:
+            self._voices_listeners.remove(callback)
+
+    def _notify_voices_changed(self):
+        for cb in list(self._voices_listeners):
+            try:
+                cb()
+            except Exception:
+                pass
+
     def add_custom_voice(self, voice_id: str, display_name: str, voice_type: str = "prompted", description: str = ""):
         custom_voices = self.data.get("custom_voices", [])
         filtered = [v for v in custom_voices if v.get("id") != voice_id]
@@ -261,11 +279,13 @@ class Config:
         })
         self.data["custom_voices"] = filtered
         self.save()
+        self._notify_voices_changed()
 
     def remove_custom_voice(self, voice_id: str):
         custom_voices = self.data.get("custom_voices", [])
         self.data["custom_voices"] = [v for v in custom_voices if v.get("id") != voice_id]
         self.save()
+        self._notify_voices_changed()
 
     def add_custom_style(self, name: str, style: str):
         custom_styles = self.data.get("custom_styles", [])

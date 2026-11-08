@@ -5,6 +5,7 @@ import threading
 import time
 import wave
 from typing import Callable, List, Optional
+from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 
 try:
@@ -77,7 +78,7 @@ class AudioPlayer:
             self._notify_state_change(True)
 
             if announce_on_start:
-                announcer.announce("Playing audio", interrupt=False)
+                announcer.announce(tr("announce_playing_audio"), interrupt=False)
 
             played_via_sd = False
 
@@ -133,7 +134,7 @@ class AudioPlayer:
                     if not self._stop_requested.is_set():
                         winsound.PlaySound(None, 0)
                 except Exception as ex:
-                    announcer.announce(f"Playback error: {ex}")
+                    announcer.announce(tr("announce_playback_error", error=ex))
                 finally:
                     if temp_path:
                         try:
@@ -157,13 +158,13 @@ class AudioPlayer:
     def play_file(self, filepath: str, announce_on_start: bool = True):
         """Play WAV audio from a file path."""
         if not os.path.exists(filepath):
-            announcer.announce(f"File not found: {filepath}")
+            announcer.announce(tr("announce_file_not_found", path=filepath))
             return
         try:
             with open(filepath, "rb") as f:
                 self.play_wav_bytes(f.read(), announce_on_start=announce_on_start)
         except Exception as e:
-            announcer.announce(f"Error reading audio file: {e}")
+            announcer.announce(tr("announce_read_audio_error", error=e))
 
     def stop(self):
         """Immediately and non-blockingly stop any playing audio."""
@@ -197,7 +198,7 @@ class AudioPlayer:
                 pass
 
         self._notify_state_change(False)
-        announcer.announce("Audio stopped", interrupt=True)
+        announcer.announce(tr("announce_audio_stopped"), interrupt=True)
         announcer.play_sound("stop")
 
 
