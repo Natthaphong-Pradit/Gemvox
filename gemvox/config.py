@@ -3,7 +3,11 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
 CONFIG_SCHEMA_VERSION = 2
 
@@ -49,7 +53,7 @@ DEFAULT_CONFIG = {
     "language": "en",
     "first_run_completed": False,
     "api_key": "",
-    "default_model": "gemini-3.8-flash-tts",
+    "default_model": "gemini-2.5-flash-preview-tts",
     "default_voice": "Kore",
     "default_style": "cheerful and friendly",
     "output_dir": "",
@@ -57,6 +61,9 @@ DEFAULT_CONFIG = {
     "sound_cues": True,
     "autoplay": True,
     "streaming": False,
+    "player_volume": 100,
+    "player_speed": 1.0,
+    "player_loop": False,
     "custom_voices": [],
     "custom_styles": []
 }

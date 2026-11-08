@@ -78,18 +78,33 @@ INLINE_VOCAL_TAGS: List[Dict[str, str]] = [
     {"tag": "<applause>", "label": "Applause", "description": "Audible audience applause effect"},
 ]
 
-# Supported Gemini TTS Models
+# Supported Gemini TTS Models (Ordered by compatibility & automatic fallback priority)
 SUPPORTED_MODELS: List[Dict[str, str]] = [
     {
+        "id": "gemini-2.5-flash-preview-tts",
+        "name": "Gemini 2.5 Flash TTS (Universal AI Studio Support)",
+        "description": "Low-latency, high-fidelity speech synthesis supported across all Google AI Studio API key tiers."
+    },
+    {
+        "id": "gemini-2.5-pro-preview-tts",
+        "name": "Gemini 2.5 Pro TTS (Studio Nuance & Long-Form)",
+        "description": "Rich prosody and emotional depth for audiobooks, podcasts, and expressive narration."
+    },
+    {
+        "id": "gemini-3.1-flash-tts-preview",
+        "name": "Gemini 3.1 Flash TTS Preview (Expressive Vocal Tags)",
+        "description": "Enhanced inline vocal tag acting (<sigh>, <laugh>, <whisper>) and natural conversational pacing."
+    },
+    {
         "id": "gemini-3.8-flash-tts",
-        "name": "Gemini 3.8 Flash TTS (High Fidelity)",
-        "description": "Studio-grade voice fidelity, expressive acting, multi-speaker, and long-form stability."
+        "name": "Gemini 3.8 Flash TTS (Next-Gen Flagship)",
+        "description": "Studio-grade voice fidelity, structured speech_metadata, and persistent Voice Design (auto-fallbacks if unavailable on tier)."
     },
     {
         "id": "gemini-3.8-flash-lite-tts",
-        "name": "Gemini 3.8 Flash-Lite TTS (Fast & Low Latency)",
-        "description": "Optimized for high-throughput, lowest latency, and cost-efficient conversational speech."
-    }
+        "name": "Gemini 3.8 Flash-Lite TTS (Fast & High Throughput)",
+        "description": "Optimized for ultra-low latency and high-throughput conversational speech (auto-fallbacks if unavailable on tier)."
+    },
 ]
 
 def get_all_style_presets() -> List[Dict[str, str]]:
@@ -119,12 +134,21 @@ def get_all_voices() -> List[VoiceInfo]:
             id=cv.get("id"),
             display_name=f"[Custom] {cv.get('display_name')}",
             tone=cv.get("type", "Custom"),
-            gender="Custom",
-            language_code="User",
+            gender=cv.get("gender", "Custom"),
+            language_code=cv.get("language_code", "User"),
             description=cv.get("description", ""),
             is_custom=True
         ))
     return voices
+
+def get_custom_voice_record(voice_id: str) -> Optional[Dict[str, str]]:
+    """Return the raw custom voice dictionary from config if voice_id matches."""
+    if not voice_id:
+        return None
+    for cv in config.get("custom_voices", []):
+        if str(cv.get("id", "")).lower() == voice_id.lower():
+            return cv
+    return None
 
 def find_voice(voice_id: str) -> Optional[VoiceInfo]:
     for v in get_all_voices():

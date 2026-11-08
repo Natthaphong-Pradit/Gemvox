@@ -19,6 +19,7 @@ from gemvox.core.updater import (
     download_and_install_update,
 )
 from gemvox.accessibility import announcer
+from gemvox.ui.player_bar import AudioTransportBar
 from gemvox.ui.theme import (
     style_panel,
     style_label,
@@ -386,47 +387,70 @@ class GenerationHistoryDialog(wx.Dialog):
 
         self.listbox = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
         style_listbox(self.listbox)
-        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        # Studio Audio Player & Transport Deck inside History Dialog
+        self.player_bar = AudioTransportBar(
+            self,
+            get_audio_bytes_cb=self._read_selected_wav_bytes
+        )
+        self.btn_play = self.player_bar.btn_play
+        self.btn_stop = self.player_bar.btn_stop
+        sizer.Add(self.player_bar.sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Action bar
         act_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_play = wx.Button(self, label=tr("btn_hist_play"))
         self.btn_save_as = wx.Button(self, label=tr("btn_hist_save_as"))
         self.btn_delete = wx.Button(self, label=tr("btn_hist_delete"))
         self.btn_open_folder = wx.Button(self, label=tr("btn_hist_open_folder"))
         self.btn_refresh = wx.Button(self, label=tr("btn_hist_refresh"))
 
-        style_button(self.btn_play, "success")
         style_button(self.btn_save_as, "gold")
         style_button(self.btn_delete, "danger")
         style_button(self.btn_open_folder, "secondary")
         style_button(self.btn_refresh, "secondary")
 
-        act_sizer.Add(self.btn_play, 0, wx.RIGHT, 8)
         act_sizer.Add(self.btn_save_as, 0, wx.RIGHT, 8)
         act_sizer.Add(self.btn_delete, 0, wx.RIGHT, 8)
         act_sizer.Add(self.btn_open_folder, 0, wx.RIGHT, 8)
         act_sizer.Add(self.btn_refresh, 0)
-        sizer.Add(act_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-
-        # Bottom Close Button
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_sizer.AddStretchSpacer(1)
+        act_sizer.AddStretchSpacer(1)
         close_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
         style_button(close_btn, "primary")
-        btn_sizer.Add(close_btn, 0)
-        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        act_sizer.Add(close_btn, 0)
+        sizer.Add(act_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         self.SetSizer(sizer)
-        self.SetSize((760, 520))
+        self.SetSize((780, 580))
 
-        self.btn_play.Bind(wx.EVT_BUTTON, self.on_play_stop)
         self.btn_save_as.Bind(wx.EVT_BUTTON, self.on_save_as)
         self.btn_delete.Bind(wx.EVT_BUTTON, self.on_delete)
         self.btn_open_folder.Bind(wx.EVT_BUTTON, lambda e: open_output_folder())
         self.btn_refresh.Bind(wx.EVT_BUTTON, lambda e: self.refresh_history(announce=True))
-        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_stop)
+        self.listbox.Bind(wx.EVT_LISTBOX, self.on_select_item)
+        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_selected)
         self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def _read_selected_wav_bytes(self) -> bytes | None:
+        target = self._get_selected_file()
+        if target and target.is_file():
+            try:
+                return target.read_bytes()
+            except Exception:
+                return None
+        return None
+
+    def on_select_item(self, event):
+        if not audio_player.is_active:
+            data = self._read_selected_wav_bytes()
+            if data:
+                self.player_bar.set_audio_ready(True, data)
+        event.Skip()
+
+    def on_play_selected(self, event=None):
+        data = self._read_selected_wav_bytes()
+        if data:
+            audio_player.play_wav_bytes(data, announce_on_start=True)
 
     def _get_wav_duration_from_file(self, path: Path) -> float:
         try:
@@ -468,13 +492,13 @@ class GenerationHistoryDialog(wx.Dialog):
         if choices:
             self.listbox.Set(choices)
             self.listbox.SetSelection(0)
-            self.btn_play.Enable(True)
+            self.player_bar.set_audio_ready(True, self._read_selected_wav_bytes())
             self.btn_save_as.Enable(True)
             self.btn_delete.Enable(True)
         else:
             self.listbox.Set([tr("msg_history_empty")])
             self.listbox.SetSelection(0)
-            self.btn_play.Enable(False)
+            self.player_bar.set_audio_ready(False)
             self.btn_save_as.Enable(False)
             self.btn_delete.Enable(False)
 
@@ -488,12 +512,7 @@ class GenerationHistoryDialog(wx.Dialog):
         return None
 
     def on_play_stop(self, event=None):
-        if audio_player.is_playing:
-            audio_player.stop()
-            return
-        target = self._get_selected_file()
-        if target and target.is_file():
-            audio_player.play_file(str(target))
+        self.player_bar.on_play_pause()
 
     def on_save_as(self, event=None):
         target = self._get_selected_file()
@@ -527,7 +546,7 @@ class GenerationHistoryDialog(wx.Dialog):
         )
         if resp == wx.YES:
             try:
-                if audio_player.is_playing:
+                if audio_player.is_active:
                     audio_player.stop()
                 target.unlink()
                 announcer.announce(tr("announce_history_deleted", filename=target.name))
@@ -544,16 +563,35 @@ class GenerationHistoryDialog(wx.Dialog):
 
         if not alt and not ctrl and not shift:
             if key == wx.WXK_RETURN and wx.Window.FindFocus() == self.listbox:
-                self.on_play_stop(None)
+                self.on_play_selected(None)
                 return
             if key == wx.WXK_DELETE and wx.Window.FindFocus() == self.listbox:
                 self.on_delete(None)
                 return
+            if key == wx.WXK_F7:
+                audio_player.skip(-5.0, announce=True)
+                return
+            if key == wx.WXK_F8:
+                audio_player.skip(5.0, announce=True)
+                return
+            if key == wx.WXK_F9:
+                audio_player.change_volume(-10, announce=True)
+                return
+            if key == wx.WXK_F10:
+                audio_player.change_volume(10, announce=True)
+                return
+
+        if ctrl and not alt and not shift and key in (ord('l'), ord('L')):
+            audio_player.toggle_loop(announce=True)
+            return
 
         if alt and not ctrl and not shift and 32 <= key <= 126:
             ch = chr(key).upper()
             if ch == 'P' and self.btn_play.IsEnabled():
                 self.on_play_stop(None)
+                return
+            if ch == 'Q':
+                audio_player.stop(announce=True)
                 return
             if ch == 'S' and self.btn_save_as.IsEnabled():
                 self.on_save_as(None)
@@ -1211,9 +1249,14 @@ HELP_SECTIONS = {
                 "  * Alt+F : File Menu           |  Alt+E : Edit Menu\n"
                 "  * Alt+A : Audio Menu          |  Alt+T : Tabs Menu\n"
                 "  * Alt+O : Tools Menu          |  Alt+H : Help Menu\n\n"
-                "GLOBAL SHORTCUTS (WORK ANYWHERE):\n"
+                "GLOBAL & STUDIO AUDIO PLAYER SHORTCUTS (WORK ANYWHERE):\n"
                 "  * Ctrl+Enter          : Generate Speech / Dialogue / Voice Design\n"
-                "  * Alt+P               : Play / Stop current audio immediately\n"
+                "  * Alt+P               : Play / Pause / Resume current audio\n"
+                "  * Alt+Q               : Stop audio & reset to 00:00\n"
+                "  * F7 / F8             : Rewind 5 Seconds (-5s) / Fast-Forward 5 Seconds (+5s)\n"
+                "  * F9 / F10            : Volume Down (-10%) / Volume Up (+10%)\n"
+                "  * Ctrl+L              : Toggle Loop Playback On / Off\n"
+                "  * Ctrl+Shift+P        : Cycle Playback Speed (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
                 "  * Ctrl+S              : Save current audio as WAV file\n"
                 "  * Ctrl+O              : Open / Load .txt script file into active tab\n"
                 "  * Ctrl+Shift+S        : Save current text or dialogue script as .txt file\n"
@@ -1276,7 +1319,8 @@ HELP_SECTIONS = {
                 "  2. กด Alt+X เพื่อเข้าสู่ช่องพิมพ์ข้อความ แล้วพิมพ์ประโยคที่ต้องการ\n"
                 "  3. กด Ctrl+Enter (หรือ Alt+G) เพื่อสั่งสังเคราะห์เสียงทันที!\n\n"
                 "ขั้นตอนที่ 4: การเล่นและบันทึกไฟล์เสียง WAV\n"
-                "  * กด Alt+P ได้ตลอดเวลาเพื่อ เล่น (Play) หรือ หยุด (Stop) เสียงทันที\n"
+                "  * กด Alt+P เพื่อ เล่น / พักชั่วคราว (Play/Pause) หรือกด Alt+Q เพื่อหยุดและรีเซ็ตเวลาเป็น 00:00\n"
+                "  * กด F7 / F8 เพื่อกรอกลับ/กรอไปข้างหน้า 5 วินาที และกด F9 / F10 เพื่อลด/เพิ่มระดับเสียง\n"
                 "  * กด Ctrl+S เพื่อบันทึกไฟล์เสียง WAV (24kHz) เก็บไว้ในโฟลเดอร์ที่ต้องการ"
             )
         },
@@ -1374,9 +1418,14 @@ HELP_SECTIONS = {
                 "  * Alt+F : เมนูไฟล์ (File)        |  Alt+E : เมนูแก้ไข (Edit)\n"
                 "  * Alt+A : เมนูเสียง (Audio)      |  Alt+T : เมนูแท็บ (Tabs)\n"
                 "  * Alt+O : เมนูเครื่องมือ (Tools)  |  Alt+H : เมนูช่วยเหลือ (Help)\n\n"
-                "คีย์ลัดระดับ GLOBAL (กดใช้งานได้จากทุกหน้า):\n"
+                "คีย์ลัดระดับ GLOBAL & เครื่องเล่นเสียงสตูดิโอ (กดใช้งานได้จากทุกหน้า):\n"
                 "  * Ctrl+Enter          : สั่งสังเคราะห์เสียงพูด / บทสนทนา / ออกแบบเสียง\n"
-                "  * Alt+P               : เล่นเสียง / หยุดเสียงทันที (Non-blocking)\n"
+                "  * Alt+P               : เล่นเสียง / พักชั่วคราว / เล่นต่อ (Play / Pause / Resume)\n"
+                "  * Alt+Q               : หยุดเสียงและรีเซ็ตเวลาเป็น 00:00 (Stop)\n"
+                "  * F7 / F8             : กรอกลับ 5 วินาที (-5s) / กรอไปข้างหน้า 5 วินาที (+5s)\n"
+                "  * F9 / F10            : ลดระดับเสียง (-10%) / เพิ่มระดับเสียง (+10%)\n"
+                "  * Ctrl+L              : เปิด/ปิดโหมดเล่นวนซ้ำ (Loop Playback)\n"
+                "  * Ctrl+Shift+P        : สลับความเร็วการเล่นเสียง (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
                 "  * Ctrl+S              : บันทึกไฟล์เสียงปัจจุบันเป็นไฟล์ WAV\n"
                 "  * Ctrl+O              : เปิดไฟล์ข้อความ / สคริปต์ (.txt) เข้าสู่แท็บปัจจุบัน\n"
                 "  * Ctrl+Shift+S        : บันทึกข้อความหรือสคริปต์บทสนทนาเป็นไฟล์ .txt\n"

@@ -11,6 +11,7 @@ from gemvox.core.voice_catalog import (
 from gemvox.core.tts_engine import tts_engine
 from gemvox.core.audio_player import audio_player
 from gemvox.ui.dialogs import InlineTagDialog, StylePresetDialog, CreateCustomStyleDialog
+from gemvox.ui.player_bar import AudioTransportBar
 from gemvox.ui.theme import (
     style_panel,
     style_label,
@@ -29,7 +30,6 @@ class SingleSpeakerPanel(wx.Panel):
         self.last_saved_path = None
         style_panel(self, accessible_name=tr("tab_single"))
         self._init_ui()
-        audio_player.add_state_listener(self._on_player_state_change)
         config.add_voices_listener(self._on_voices_changed)
 
     def _on_voices_changed(self):
@@ -122,29 +122,33 @@ class SingleSpeakerPanel(wx.Panel):
         opt_box_sizer.Add(grid_sizer, 1, wx.EXPAND | wx.ALL, 10)
         main_sizer.Add(opt_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
-        # 3. Action Transport Bar
+        # 3. Generation & Export Bar
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_generate = wx.Button(self, label=tr("btn_generate_speech"))
         self.btn_generate.SetDefault()
         style_button(self.btn_generate, "primary")
-
-        self.btn_play = wx.Button(self, label=tr("btn_play_audio"))
-        self.btn_play.Enable(False)
-        style_button(self.btn_play, "success")
 
         self.btn_save = wx.Button(self, label=tr("btn_save_audio"))
         self.btn_save.Enable(False)
         style_button(self.btn_save, "secondary")
 
         btn_sizer.Add(self.btn_generate, 0, wx.RIGHT, 10)
-        btn_sizer.Add(self.btn_play, 0, wx.RIGHT, 10)
         btn_sizer.Add(self.btn_save, 0)
-        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-        # 4. Accessible Status Readout Console
+        # 4. Studio Audio Player & Transport Deck
+        self.player_bar = AudioTransportBar(
+            self,
+            get_audio_bytes_cb=lambda: self.last_audio_bytes
+        )
+        self.btn_play = self.player_bar.btn_play
+        self.btn_stop = self.player_bar.btn_stop
+        main_sizer.Add(self.player_bar.sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # 5. Accessible Status Readout Console
         self.lbl_status = wx.StaticText(self, label=tr("status_ready"))
         style_label(self.lbl_status, "status")
-        main_sizer.Add(self.lbl_status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        main_sizer.Add(self.lbl_status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.SetSizer(main_sizer)
 
@@ -156,7 +160,6 @@ class SingleSpeakerPanel(wx.Panel):
         self.btn_create_style.Bind(wx.EVT_BUTTON, self.on_create_custom_style)
         self.btn_audition.Bind(wx.EVT_BUTTON, self.on_audition_voice)
         self.btn_generate.Bind(wx.EVT_BUTTON, self.on_generate)
-        self.btn_play.Bind(wx.EVT_BUTTON, self.on_play_stop)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
 
     def refresh_voices(self, select_voice_id: str = None):
@@ -357,8 +360,8 @@ class SingleSpeakerPanel(wx.Panel):
 
                 def _ui_update():
                     self.btn_generate.Enable(True)
-                    self.btn_play.Enable(True)
                     self.btn_save.Enable(True)
+                    self.player_bar.set_audio_ready(True, wav_bytes)
                     self.lbl_status.SetLabel(tr("status_single_ready", duration=duration, path=out_path))
                     if config.get("autoplay", True):
                         audio_player.play_wav_bytes(wav_bytes)
@@ -373,11 +376,7 @@ class SingleSpeakerPanel(wx.Panel):
         threading.Thread(target=_worker, daemon=True).start()
 
     def on_play_stop(self, event=None):
-        if audio_player.is_playing:
-            audio_player.stop()
-        else:
-            if self.last_audio_bytes:
-                audio_player.play_wav_bytes(self.last_audio_bytes)
+        self.player_bar.on_play_pause()
 
     def on_save(self, event=None):
         if not self.last_audio_bytes:
@@ -399,13 +398,3 @@ class SingleSpeakerPanel(wx.Panel):
                     f.write(self.last_audio_bytes)
                 announcer.announce(tr("announce_audio_saved", path=dest))
                 self.lbl_status.SetLabel(tr("status_saved_path", path=dest))
-
-    def _on_player_state_change(self, is_playing: bool):
-        def _update():
-            if is_playing:
-                self.btn_play.SetLabel(tr("btn_stop_audio"))
-                style_button(self.btn_play, "danger")
-            else:
-                self.btn_play.SetLabel(tr("btn_play_audio"))
-                style_button(self.btn_play, "success")
-        wx.CallAfter(_update)

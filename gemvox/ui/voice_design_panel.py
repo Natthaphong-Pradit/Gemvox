@@ -5,6 +5,7 @@ from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.tts_engine import tts_engine
 from gemvox.core.audio_player import audio_player
+from gemvox.ui.player_bar import AudioTransportBar
 from gemvox.ui.theme import (
     style_panel,
     style_label,
@@ -44,7 +45,6 @@ class VoiceDesignPanel(wx.Panel):
         self.last_sample_bytes = None
         style_panel(self, accessible_name=tr("tab_design"))
         self._init_ui()
-        audio_player.add_state_listener(self._on_player_state_change)
 
     def _init_ui(self):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -54,7 +54,7 @@ class VoiceDesignPanel(wx.Panel):
             label=tr("vd_info")
         )
         style_label(info_box, "muted")
-        main_sizer.Add(info_box, 0, wx.ALL, 14)
+        main_sizer.Add(info_box, 0, wx.ALL, 12)
 
         # Persona Parameters Card
         design_box = wx.StaticBox(self, label=tr("vd_box_specs"))
@@ -104,7 +104,7 @@ class VoiceDesignPanel(wx.Panel):
         grid.Add(self.txt_prompt, 1, wx.EXPAND)
 
         design_box_sizer.Add(grid, 1, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(design_box_sizer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        main_sizer.Add(design_box_sizer, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Sample templates bar
         sample_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -117,17 +117,13 @@ class VoiceDesignPanel(wx.Panel):
         sample_sizer.Add(self.btn_sample_astronomer, 0, wx.RIGHT, 8)
         sample_sizer.Add(self.btn_sample_educator, 0, wx.RIGHT, 8)
         sample_sizer.Add(self.btn_sample_fantasy, 0)
-        main_sizer.Add(sample_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        main_sizer.Add(sample_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Action Buttons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_create = wx.Button(self, label=tr("btn_create_voice"))
         self.btn_create.SetDefault()
         style_button(self.btn_create, "primary")
-
-        self.btn_play_preview = wx.Button(self, label=tr("btn_play_preview"))
-        self.btn_play_preview.Enable(False)
-        style_button(self.btn_play_preview, "success")
 
         self.btn_copy_id = wx.Button(self, label=tr("btn_copy_id_y"))
         self.btn_copy_id.Enable(False)
@@ -138,10 +134,21 @@ class VoiceDesignPanel(wx.Panel):
         style_button(self.btn_save_wav, "secondary")
 
         btn_sizer.Add(self.btn_create, 0, wx.RIGHT, 10)
-        btn_sizer.Add(self.btn_play_preview, 0, wx.RIGHT, 10)
         btn_sizer.Add(self.btn_copy_id, 0, wx.RIGHT, 10)
         btn_sizer.Add(self.btn_save_wav, 0)
-        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # Studio Audio Player & Transport Deck
+        self.player_bar = AudioTransportBar(
+            self,
+            get_audio_bytes_cb=lambda: self.last_sample_bytes,
+            play_label_key="btn_play_preview",
+            pause_label_key="btn_pause_preview",
+            resume_label_key="btn_resume_preview",
+        )
+        self.btn_play_preview = self.player_bar.btn_play
+        self.btn_stop = self.player_bar.btn_stop
+        main_sizer.Add(self.player_bar.sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Status & ID Output
         self.lbl_id = wx.StaticText(self, label=tr("lbl_voice_id_none"))
@@ -149,7 +156,7 @@ class VoiceDesignPanel(wx.Panel):
         self.lbl_status = wx.StaticText(self, label=tr("status_ready"))
         style_label(self.lbl_status, "status")
         main_sizer.Add(self.lbl_id, 0, wx.LEFT | wx.RIGHT, 14)
-        main_sizer.Add(self.lbl_status, 0, wx.ALL, 14)
+        main_sizer.Add(self.lbl_status, 0, wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 8)
 
         self.SetSizer(main_sizer)
 
@@ -158,7 +165,6 @@ class VoiceDesignPanel(wx.Panel):
         self.btn_sample_educator.Bind(wx.EVT_BUTTON, lambda e: self.load_sample(1))
         self.btn_sample_fantasy.Bind(wx.EVT_BUTTON, lambda e: self.load_sample(2))
         self.btn_create.Bind(wx.EVT_BUTTON, self.on_create_voice)
-        self.btn_play_preview.Bind(wx.EVT_BUTTON, self.on_play_preview)
         self.btn_copy_id.Bind(wx.EVT_BUTTON, self.on_copy_id)
         self.btn_save_wav.Bind(wx.EVT_BUTTON, self.on_save_wav)
 
@@ -202,7 +208,7 @@ class VoiceDesignPanel(wx.Panel):
 
                 def _ui_update():
                     self.btn_create.Enable(True)
-                    self.btn_play_preview.Enable(bool(sample_bytes))
+                    self.player_bar.set_audio_ready(bool(sample_bytes), sample_bytes)
                     self.btn_copy_id.Enable(bool(voice_id))
                     self.btn_save_wav.Enable(bool(sample_bytes))
                     self.lbl_id.SetLabel(tr("lbl_voice_id_assigned", voice_id=voice_id))
@@ -220,21 +226,7 @@ class VoiceDesignPanel(wx.Panel):
         threading.Thread(target=_worker, daemon=True).start()
 
     def on_play_preview(self, event=None):
-        if audio_player.is_playing:
-            audio_player.stop()
-        else:
-            if self.last_sample_bytes:
-                audio_player.play_wav_bytes(self.last_sample_bytes)
-
-    def _on_player_state_change(self, is_playing: bool):
-        def _update():
-            if is_playing:
-                self.btn_play_preview.SetLabel(tr("btn_stop_preview"))
-                style_button(self.btn_play_preview, "danger")
-            else:
-                self.btn_play_preview.SetLabel(tr("btn_play_preview"))
-                style_button(self.btn_play_preview, "success")
-        wx.CallAfter(_update)
+        self.player_bar.on_play_pause()
 
     def on_copy_id(self, event):
         if self.last_voice_id:

@@ -115,6 +115,16 @@ class MainWindow(wx.Frame):
         # Audio menu
         audio_menu = wx.Menu()
         m_play = audio_menu.Append(wx.ID_ANY, tr("menu_play_stop"))
+        m_stop = audio_menu.Append(wx.ID_ANY, tr("menu_stop_audio"))
+        audio_menu.AppendSeparator()
+        m_rew = audio_menu.Append(wx.ID_ANY, tr("menu_rewind_5s"))
+        m_ff = audio_menu.Append(wx.ID_ANY, tr("menu_forward_5s"))
+        audio_menu.AppendSeparator()
+        m_vol_down = audio_menu.Append(wx.ID_ANY, tr("menu_vol_down"))
+        m_vol_up = audio_menu.Append(wx.ID_ANY, tr("menu_vol_up"))
+        m_speed = audio_menu.Append(wx.ID_ANY, tr("menu_cycle_speed"))
+        m_loop = audio_menu.Append(wx.ID_ANY, tr("menu_toggle_loop"))
+        audio_menu.AppendSeparator()
         m_audio_history = audio_menu.Append(wx.ID_ANY, tr("menu_audio_history"))
         menu_bar.Append(audio_menu, tr("menu_audio"))
 
@@ -168,6 +178,13 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_edit_select_all, m_select_all)
         self.Bind(wx.EVT_MENU, self.on_edit_clear, m_clear_field)
         self.Bind(wx.EVT_MENU, self.on_menu_play, m_play)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.stop(announce=True), m_stop)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.skip(-5.0, announce=True), m_rew)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.skip(5.0, announce=True), m_ff)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.change_volume(-10, announce=True), m_vol_down)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.change_volume(10, announce=True), m_vol_up)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.cycle_speed(announce=True), m_speed)
+        self.Bind(wx.EVT_MENU, lambda e: audio_player.toggle_loop(announce=True), m_loop)
         self.Bind(wx.EVT_MENU, self.on_menu_history, m_audio_history)
         self.Bind(wx.EVT_MENU, lambda e: self.switch_tab(0), m_tab1)
         self.Bind(wx.EVT_MENU, lambda e: self.switch_tab(1), m_tab2)
@@ -302,15 +319,31 @@ class MainWindow(wx.Frame):
             self.on_global_generate(None)
             return
 
-        # 5. Global Play / Stop Audio: Alt+P
+        # 5. Global Audio Transport: Alt+P (Play/Pause), Alt+Q (Stop), F7 (-5s), F8 (+5s), F9 (Vol-), F10 (Vol+)
         if alt and not ctrl and not shift and (key == ord('p') or key == ord('P')):
             self.on_menu_play(None)
             return
-
-        # 5b. Global File & Workflow Shortcuts (Ctrl+O, Ctrl+S, Ctrl+Shift+S, Ctrl+H, Ctrl+Shift+O, Ctrl+I, Alt+Shift+L, F1)
-        if not ctrl and not alt and not shift and key == wx.WXK_F1:
-            self.on_menu_help(None)
+        if alt and not ctrl and not shift and (key == ord('q') or key == ord('Q')):
+            audio_player.stop(announce=True)
             return
+
+        # 5b. Global File, Audio & Workflow Shortcuts
+        if not ctrl and not alt and not shift:
+            if key == wx.WXK_F1:
+                self.on_menu_help(None)
+                return
+            if key == wx.WXK_F7:
+                audio_player.skip(-5.0, announce=True)
+                return
+            if key == wx.WXK_F8:
+                audio_player.skip(5.0, announce=True)
+                return
+            if key == wx.WXK_F9:
+                audio_player.change_volume(-10, announce=True)
+                return
+            if key == wx.WXK_F10:
+                audio_player.change_volume(10, announce=True)
+                return
         if ctrl and not alt and not shift:
             if key in (ord('o'), ord('O')):
                 self.on_menu_open_script(None)
@@ -327,12 +360,18 @@ class MainWindow(wx.Frame):
             if key in (ord('u'), ord('U')):
                 self.on_menu_check_updates(None)
                 return
+            if key in (ord('l'), ord('L')):
+                audio_player.toggle_loop(announce=True)
+                return
         if ctrl and shift and not alt:
             if key in (ord('s'), ord('S')):
                 self.on_menu_save_script(None)
                 return
             if key in (ord('o'), ord('O')):
                 self.on_menu_open_output(None)
+                return
+            if key in (ord('p'), ord('P')):
+                audio_player.cycle_speed(announce=True)
                 return
         if alt and shift and not ctrl:
             if key in (ord('l'), ord('L')):
@@ -775,9 +814,6 @@ class MainWindow(wx.Frame):
             self.tab_single.on_announce_stats(None)
 
     def on_menu_play(self, event=None):
-        if audio_player.is_playing:
-            audio_player.stop()
-            return
         sel = self.notebook.GetSelection()
         if sel == 0:
             self.tab_single.on_play_stop()
@@ -785,6 +821,8 @@ class MainWindow(wx.Frame):
             self.tab_multi.on_play_stop()
         elif sel == 2:
             self.tab_design.on_play_preview(None)
+        else:
+            audio_player.toggle_play_pause(announce=True)
 
     def on_menu_tag(self, event):
         sel = self.notebook.GetSelection()
