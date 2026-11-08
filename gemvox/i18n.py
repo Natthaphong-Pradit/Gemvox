@@ -69,6 +69,7 @@ TRANSLATIONS = {
 
         "menu_help": "&Help",
         "menu_help_guide": "&User Guide and Shortcuts\tF1",
+        "menu_check_updates": "&Check for Updates...\tCtrl+U",
         "menu_about": "&About Gemvox",
 
         # Single Speaker Panel
@@ -171,6 +172,7 @@ TRANSLATIONS = {
         "chk_beeps": "Enable Auditory Sound Cues (&Beeps) (Alt+B)",
         "chk_autoplay": "A&uto-play speech immediately upon generation (Alt+U)",
         "btn_save_settings": "&Save Settings (Alt+S)",
+        "btn_check_updates": "Check for Updates... (Ctrl+U)",
         "msg_settings_saved": "Settings saved successfully.",
         "restart_prompt_title": "Restart Required",
         "restart_prompt_msg": "Your settings have been saved.\n\nGemvox needs to restart for all changes to take full effect.\nWould you like to restart Gemvox now?",
@@ -237,6 +239,29 @@ TRANSLATIONS = {
         "help_content_label": "Detailed &Guide Content (Alt+G):",
         "btn_open_tour": "Open &Welcome Tour (Alt+W)",
         "btn_close": "&Close (Alt+C)",
+
+        # Direct GitHub Auto-Updater Dialog
+        "dlg_update_title": "Gemvox Auto-Updater (Ctrl+U)",
+        "dlg_update_banner": "DIRECT GITHUB AUTO-UPDATER",
+        "dlg_update_sub": "Automatically check, download, and install updates from Natthaphong-Pradit/Gemvox",
+        "lbl_upd_notes": "Release &Notes and Update Details (Alt+N):",
+        "btn_upd_install": "&Install Update and Restart (Alt+I)",
+        "btn_upd_reinstall": "Re&install Current Version (Alt+I)",
+        "btn_upd_check": "Check A&gain (Alt+G)",
+        "btn_upd_open_repo": "Open GitHub &Repository (Alt+R)",
+        "upd_checking": "Checking GitHub repository (Natthaphong-Pradit/Gemvox) for updates...",
+        "upd_available_status": "New version available: v{latest} (Current: v{current}) | Mode: {mode}",
+        "upd_available_announce": "Update available! Version {latest} is ready to download and install. Press Alt+I to install now.",
+        "upd_up_to_date_status": "You are running the latest version (v{current}) | Mode: {mode}",
+        "upd_up_to_date_announce": "Gemvox is up to date. You are running version {current}.",
+        "upd_error_status": "Update check failed: {error}",
+        "upd_error_announce": "Could not check for updates: {error}",
+        "upd_downloading_status": "{stage}: {percent}%",
+        "upd_downloading_announce": "Downloading update from GitHub, please wait...",
+        "upd_installing_announce": "Update downloaded. Applying update and restarting Gemvox now...",
+        "upd_mode_standalone": "Standalone EXE (Single-File Auto-Replace)",
+        "upd_mode_portable": "Portable Folder (In-Place ZIP Auto-Extract)",
+        "upd_mode_source": "Python Source Repository (Direct Code Sync)",
 
         # Screen Reader Announcements & Dynamic Status Messages
         "announce_playing_audio": "Playing audio",
@@ -399,6 +424,7 @@ TRANSLATIONS = {
 
         "menu_help": "ช่วยเหลือ (&Help)",
         "menu_help_guide": "คู่มือการใช้งานและคีย์ลัด (&User Guide)\tF1",
+        "menu_check_updates": "ตรวจสอบอัปเดตโปรแกรม (&Check for Updates)...\tCtrl+U",
         "menu_about": "เกี่ยวกับ Gemvox (&About)",
 
         # Single Speaker Panel
@@ -501,6 +527,7 @@ TRANSLATIONS = {
         "chk_beeps": "เปิดใช้เสียงสัญญาณเตือนเมื่อเริ่ม/เสร็จสิ้นงาน (Alt+&B)",
         "chk_autoplay": "เล่นเสียงพูดอัตโนมัติทันทีที่สังเคราะห์เสร็จ (Alt+&U)",
         "btn_save_settings": "บันทึกการตั้งค่า (Alt+&S)",
+        "btn_check_updates": "ตรวจสอบอัปเดตโปรแกรม... (Ctrl+U)",
         "msg_settings_saved": "บันทึกการตั้งค่าเรียบร้อยแล้ว",
         "restart_prompt_title": "จำเป็นต้องรีสตาร์ทโปรแกรม",
         "restart_prompt_msg": "บันทึกการตั้งค่าของคุณเรียบร้อยแล้ว\n\nโปรแกรมจำเป็นต้องรีสตาร์ทเพื่อให้การตั้งค่าใหม่มีผลสมบูรณ์\nคุณต้องการรีสตาร์ท Gemvox ตอนนี้เลยหรือไม่?",
@@ -567,6 +594,29 @@ TRANSLATIONS = {
         "help_content_label": "รายละเอียดคำแนะนำทีละขั้นตอน (Alt+&G):",
         "btn_open_tour": "เปิดทัวร์แนะนำการใช้งาน (Alt+&W)",
         "btn_close": "ปิดหน้าต่าง (Alt+&C)",
+
+        # Direct GitHub Auto-Updater Dialog
+        "dlg_update_title": "ระบบอัปเดตโปรแกรมอัตโนมัติ Gemvox (Ctrl+U)",
+        "dlg_update_banner": "ระบบอัปเดตตรงจาก GITHUB (AUTO-UPDATER)",
+        "dlg_update_sub": "ตรวจสอบ ดาวน์โหลด และติดตั้งเวอร์ชันใหม่โดยตรงจาก Natthaphong-Pradit/Gemvox โดยไม่ต้องแตกไฟล์เอง",
+        "lbl_upd_notes": "รายละเอียดเวอร์ชันและบันทึกการอัปเดต (Alt+&N):",
+        "btn_upd_install": "ดาวน์โหลดและติดตั้งอัปเดตทันที (Alt+&I)",
+        "btn_upd_reinstall": "ติดตั้งเวอร์ชันปัจจุบันซ้ำอีกครั้ง (Alt+&I)",
+        "btn_upd_check": "ตรวจสอบอีกครั้ง (Alt+&G)",
+        "btn_upd_open_repo": "เปิดหน้า GitHub ของโปรเจกต์ (Alt+&R)",
+        "upd_checking": "กำลังเชื่อมต่อ GitHub (Natthaphong-Pradit/Gemvox) เพื่อตรวจสอบเวอร์ชันล่าสุด...",
+        "upd_available_status": "พบเวอร์ชันใหม่: v{latest} (เวอร์ชันปัจจุบัน: v{current}) | โหมด: {mode}",
+        "upd_available_announce": "พบเวอร์ชันใหม่ {latest} พร้อมดาวน์โหลดและติดตั้ง กด Alt+I เพื่ออัปเดตทันที",
+        "upd_up_to_date_status": "คุณกำลังใช้งานเวอร์ชันล่าสุดแล้ว (v{current}) | โหมด: {mode}",
+        "upd_up_to_date_announce": "โปรแกรมเป็นเวอร์ชันล่าสุดแล้ว เวอร์ชันปัจจุบันคือ {current}",
+        "upd_error_status": "ไม่สามารถตรวจสอบอัปเดตได้: {error}",
+        "upd_error_announce": "เกิดข้อผิดพลาดในการตรวจสอบอัปเดต: {error}",
+        "upd_downloading_status": "{stage}: {percent}%",
+        "upd_downloading_announce": "กำลังดาวน์โหลดไฟล์อัปเดตจาก GitHub กรุณารอสักครู่...",
+        "upd_installing_announce": "ดาวน์โหลดเสร็จสมบูรณ์ กำลังติดตั้งและรีสตาร์ทโปรแกรมอัตโนมัติ...",
+        "upd_mode_standalone": "ไฟล์เดี่ยว Standalone EXE (สลับไฟล์และรีสตาร์ทอัตโนมัติ)",
+        "upd_mode_portable": "โฟลเดอร์พกพา Portable (แตกไฟล์ทับและรีสตาร์ทอัตโนมัติ)",
+        "upd_mode_source": "ซอร์สโค้ด Python (ซิงค์โค้ดจาก GitHub โดยตรง)",
 
         # Screen Reader Announcements & Dynamic Status Messages
         "announce_playing_audio": "กำลังเล่นเสียง",

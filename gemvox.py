@@ -23,7 +23,15 @@ def _attach_console_if_needed():
         except Exception:
             pass
 
-from gemvox.cli import parse_cli_args, run_interactive_cli, handle_speak, handle_dialogue, handle_voices, handle_design
+from gemvox.cli import (
+    parse_cli_args,
+    run_interactive_cli,
+    handle_speak,
+    handle_dialogue,
+    handle_voices,
+    handle_design,
+    handle_update,
+)
 
 def main():
     _attach_console_if_needed()
@@ -41,6 +49,9 @@ def main():
         return
     elif args.command == "design":
         handle_design(args)
+        return
+    elif args.command == "update":
+        handle_update(args)
         return
 
     # Check CLI flag

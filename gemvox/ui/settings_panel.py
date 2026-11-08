@@ -9,6 +9,7 @@ from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.client import client_manager
 from gemvox.core.voice_catalog import SUPPORTED_MODELS, get_all_voices
+from gemvox.ui.dialogs import UpdateDialog
 from gemvox.ui.theme import (
     style_panel,
     style_label,
@@ -169,12 +170,15 @@ class SettingsPanel(wx.Panel):
         acc_sizer.Add(self.chk_autoplay, 0, wx.ALL, 8)
         main_sizer.Add(acc_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 14)
 
-        # Save Button
+        # Save & Update Buttons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_save = wx.Button(self, label=tr("btn_save_settings"))
         self.btn_save.SetDefault()
+        self.btn_check_updates = wx.Button(self, label=tr("btn_check_updates"))
         style_button(self.btn_save, "primary")
+        style_button(self.btn_check_updates, "gold")
         btn_sizer.Add(self.btn_save, 0, wx.RIGHT, 10)
+        btn_sizer.Add(self.btn_check_updates, 0)
         main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         # Status
@@ -189,6 +193,7 @@ class SettingsPanel(wx.Panel):
         self.btn_get_key.Bind(wx.EVT_BUTTON, self.on_get_api_key)
         self.btn_browse_out.Bind(wx.EVT_BUTTON, self.on_browse_output)
         self.btn_save.Bind(wx.EVT_BUTTON, self.on_save_settings)
+        self.btn_check_updates.Bind(wx.EVT_BUTTON, self.on_check_updates)
 
     def refresh_default_voices(self):
         current_id = None
@@ -302,3 +307,9 @@ class SettingsPanel(wx.Panel):
         val = not self.chk_autoplay.GetValue()
         self.chk_autoplay.SetValue(val)
         announcer.announce(tr("announce_toggle_autoplay_on" if val else "announce_toggle_autoplay_off"))
+
+    def on_check_updates(self, event=None):
+        dlg = UpdateDialog(self)
+        dlg.ShowModal()
+        if dlg:
+            dlg.Destroy()

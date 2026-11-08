@@ -90,6 +90,41 @@ def handle_design(args):
     if preview_path:
         print(f"Preview saved to: {preview_path}")
 
+def handle_update(args):
+    from gemvox.core.updater import REPO_URL, check_for_updates, download_and_install_update
+    print(f"Checking GitHub repository ({REPO_URL}) for updates...")
+    info = check_for_updates()
+    if info.error:
+        print(f"Error checking for updates: {info.error}")
+        return
+
+    print(f"Current Version : v{info.current_version}")
+    print(f"Latest Version  : v{info.latest_version}")
+    print(f"Install Mode    : {info.install_mode}")
+    print(f"Update Package  : {info.asset_name}")
+
+    if not info.is_newer and not getattr(args, "force", False):
+        print("\nGemvox is already up to date! (Use --force to reinstall current version)")
+        return
+
+    if getattr(args, "check_only", False):
+        return
+
+    print(f"\nDownloading and installing {info.asset_name} from GitHub...")
+    last_pct = -1
+    def _cb(pct: int, stage: str):
+        nonlocal last_pct
+        step = (pct // 10) * 10
+        if step > last_pct:
+            last_pct = step
+            print(f"  [{pct:3d}%] {stage}")
+
+    ok, msg = download_and_install_update(info, progress_callback=_cb, relaunch=False)
+    if ok:
+        print(f"\nSUCCESS: {msg}")
+    else:
+        print(f"\nERROR: {msg}")
+
 def parse_cli_args(args=None):
     parser = argparse.ArgumentParser(
         prog="gemvox",
@@ -126,6 +161,11 @@ def parse_cli_args(args=None):
     p_design.add_argument("--prompt", "-p", required=True, help="Description prompt for the persona")
     p_design.add_argument("--gender", "-g", choices=["male", "female", "neutral"], help="Gender presentation")
     p_design.add_argument("--lang", "-l", default="en-US", help="Language code (e.g. en-US, en-GB)")
+
+    # Update command
+    p_update = subparsers.add_parser("update", help="Check for updates and auto-install directly from GitHub")
+    p_update.add_argument("--check-only", action="store_true", help="Only check for updates without installing")
+    p_update.add_argument("--force", "-f", action="store_true", help="Force reinstall even if already on latest version")
 
     parsed = parser.parse_args(args)
     return parser, parsed

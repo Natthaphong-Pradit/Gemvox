@@ -58,6 +58,7 @@ The official Google AI Studio web interface is powerful, but its nested web comp
    - **Recent Generations History (`Ctrl+H`)**: Browse all generated `.wav` audio takes in your output folder, replay/stop takes, export copies (`Alt+S`), delete old takes (`Alt+D`), or open the output folder directly (`Ctrl+Shift+O`).
    - One-click WAV export (`Ctrl+S`) and automatic timestamped audio saving in the output directory.
    - **100% Bilingual Localization (English & Thai)**: Both the visual interface and all spoken Screen Reader announcements / status bar messages are localized in English and Thai.
+   - **Direct GitHub Auto-Updater (`Ctrl+U`)**: Checks `https://github.com/Natthaphong-Pradit/Gemvox` directly, downloads the latest release or source update, and performs an automatic in-place update and restart (supports Standalone `.exe`, Portable `.zip` folder, and Python source modes) while preserving your settings, custom voices, and output files.
 
 ---
 
@@ -152,6 +153,11 @@ Design custom voice:
 .\venv\Scripts\python.exe gemvox.py design "Warm British Astronomer" --prompt "A warm astronomer in his late 60s" --gender male --lang en-GB
 ```
 
+Check for updates and auto-install directly from GitHub:
+```powershell
+.\venv\Scripts\python.exe gemvox.py update
+```
+
 ---
 
 ## Keyboard Shortcuts Guide
@@ -166,6 +172,7 @@ Design custom voice:
 | `Ctrl+H` | Open Recent Generations History dialog |
 | `Ctrl+Shift+O` | Open Output Folder in File Explorer |
 | `Ctrl+I` | Announce Text & Script Statistics (words, characters, lines, duration) |
+| `Ctrl+U` | Check for Updates & Direct Auto-Installer from GitHub |
 | `Ctrl+1` .. `Ctrl+6` | Switch directly to Tabs 1 through 6 |
 | `Alt+T` | Open Tabs menu |
 | `F1` | Open Help & Accessibility Guide dialog |

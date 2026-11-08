@@ -2,7 +2,9 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import wave
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 import wx
@@ -10,6 +12,12 @@ from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.core.voice_catalog import INLINE_VOCAL_TAGS, STYLE_PRESETS, get_all_style_presets
 from gemvox.core.audio_player import audio_player
+from gemvox.core.updater import (
+    REPO_URL,
+    UpdateInfo,
+    check_for_updates,
+    download_and_install_update,
+)
 from gemvox.accessibility import announcer
 from gemvox.ui.theme import (
     style_panel,
@@ -569,6 +577,274 @@ class GenerationHistoryDialog(wx.Dialog):
         event.Skip()
 
 
+class UpdateDialog(wx.Dialog):
+    """
+    Accessible Direct GitHub Auto-Updater Dialog (Ctrl+U).
+    Connects directly to https://github.com/Natthaphong-Pradit/Gemvox,
+    checks for newer releases or main branch updates, downloads the appropriate
+    package (Standalone EXE, Portable ZIP, or Source Archive), and installs/relaunches
+    Gemvox in place without requiring the user to manually extract files.
+    """
+    def __init__(self, parent):
+        super().__init__(
+            parent,
+            title=tr("dlg_update_title"),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
+        )
+        self.update_info: UpdateInfo | None = None
+        self._is_busy = False
+        self._last_announced_milestone = -1
+        style_panel(self, accessible_name=tr("dlg_update_title"))
+        self._init_ui()
+        self.CentreOnParent()
+        wx.CallAfter(self.start_check)
+
+    def _init_ui(self):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        attach_painted_header(
+            self,
+            sizer,
+            title=tr("dlg_update_banner"),
+            subtitle=tr("dlg_update_sub"),
+            badge_text="GITHUB UPDATER"
+        )
+
+        # Status text
+        self.lbl_status = wx.StaticText(self, label=tr("upd_checking"))
+        style_label(self.lbl_status, "status")
+        sizer.Add(self.lbl_status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
+
+        # Progress bar
+        self.gauge = wx.Gauge(self, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        self.gauge.SetValue(0)
+        sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+
+        # Release notes & update details
+        lbl_notes = wx.StaticText(self, label=tr("lbl_upd_notes"))
+        style_label(lbl_notes, "section")
+        sizer.Add(lbl_notes, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+
+        self.txt_notes = wx.TextCtrl(
+            self,
+            value=tr("upd_checking"),
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2
+        )
+        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
+        sizer.Add(self.txt_notes, 1, wx.EXPAND | wx.ALL, 12)
+
+        # Action bar
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_install = wx.Button(self, label=tr("btn_upd_install"))
+        self.btn_install.Enable(False)
+        self.btn_check = wx.Button(self, label=tr("btn_upd_check"))
+        self.btn_open_repo = wx.Button(self, label=tr("btn_upd_open_repo"))
+        self.btn_close = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
+
+        style_button(self.btn_install, "gold")
+        style_button(self.btn_check, "secondary")
+        style_button(self.btn_open_repo, "secondary")
+        style_button(self.btn_close, "primary")
+
+        btn_sizer.Add(self.btn_install, 0, wx.RIGHT, 8)
+        btn_sizer.Add(self.btn_check, 0, wx.RIGHT, 8)
+        btn_sizer.Add(self.btn_open_repo, 0, wx.RIGHT, 8)
+        btn_sizer.AddStretchSpacer(1)
+        btn_sizer.Add(self.btn_close, 0)
+        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 14)
+
+        self.SetSizer(sizer)
+        self.SetSize((760, 500))
+
+        self.btn_install.Bind(wx.EVT_BUTTON, self.on_install)
+        self.btn_check.Bind(wx.EVT_BUTTON, lambda e: self.start_check())
+        self.btn_open_repo.Bind(wx.EVT_BUTTON, self.on_open_repo)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def _mode_display_name(self, mode: str) -> str:
+        if mode == "standalone_exe":
+            return tr("upd_mode_standalone")
+        if mode == "portable_dir":
+            return tr("upd_mode_portable")
+        return tr("upd_mode_source")
+
+    def start_check(self):
+        if self._is_busy:
+            return
+        self._is_busy = True
+        self.btn_install.Enable(False)
+        self.btn_check.Enable(False)
+        self.gauge.Pulse()
+        self.lbl_status.SetLabel(tr("upd_checking"))
+        self.txt_notes.SetValue(
+            f"Repository : {REPO_URL}\n"
+            f"Status     : {tr('upd_checking')}\n"
+        )
+        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
+        announcer.announce(tr("upd_checking"))
+
+        def _worker():
+            info = check_for_updates()
+            wx.CallAfter(self._on_check_completed, info)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_check_completed(self, info: UpdateInfo):
+        if not self or not self.IsShown():
+            return
+        self._is_busy = False
+        self.update_info = info
+        self.gauge.SetValue(0)
+        self.btn_check.Enable(True)
+
+        if info.error:
+            status_msg = tr("upd_error_status", error=info.error)
+            self.lbl_status.SetLabel(status_msg)
+            self.txt_notes.SetValue(
+                f"Repository : {REPO_URL}\n"
+                f"Error      : {info.error}\n"
+            )
+            style_text_ctrl(self.txt_notes, multiline=True, mono=True)
+            announcer.play_sound("error")
+            announcer.announce(tr("upd_error_announce", error=info.error))
+            return
+
+        mode_label = self._mode_display_name(info.install_mode)
+        if info.is_newer:
+            status_msg = tr(
+                "upd_available_status",
+                latest=info.latest_version,
+                current=info.current_version,
+                mode=mode_label,
+            )
+            self.btn_install.SetLabel(tr("btn_upd_install"))
+            self.btn_install.Enable(True)
+            self.btn_install.SetDefault()
+            announcer.play_sound("complete")
+            announcer.announce(tr("upd_available_announce", latest=info.latest_version))
+        else:
+            status_msg = tr(
+                "upd_up_to_date_status",
+                current=info.current_version,
+                mode=mode_label,
+            )
+            self.btn_install.SetLabel(tr("btn_upd_reinstall"))
+            self.btn_install.Enable(bool(info.download_url))
+            announcer.play_sound("success")
+            announcer.announce(tr("upd_up_to_date_announce", current=info.current_version))
+
+        self.lbl_status.SetLabel(status_msg)
+        details = (
+            f"====================================================================\n"
+            f"GEMVOX DIRECT GITHUB AUTO-UPDATER\n"
+            f"====================================================================\n"
+            f"GitHub Repository : {REPO_URL}\n"
+            f"Current Version   : v{info.current_version}\n"
+            f"Latest Version    : v{info.latest_version}\n"
+            f"Installation Mode : {mode_label}\n"
+            f"Update Package    : {info.asset_name}\n"
+            f"Published At      : {info.published_at or 'Latest'}\n"
+            f"====================================================================\n\n"
+            f"RELEASE NOTES & DETAILS:\n"
+            f"{info.release_notes}\n"
+        )
+        self.txt_notes.SetValue(details)
+        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
+        self.txt_notes.SetInsertionPoint(0)
+        if info.is_newer:
+            self.btn_install.SetFocus()
+        else:
+            self.txt_notes.SetFocus()
+        self.Layout()
+
+    def on_install(self, event=None):
+        if self._is_busy or not self.update_info or not self.update_info.download_url:
+            return
+        self._is_busy = True
+        self._last_announced_milestone = -1
+        self.btn_install.Enable(False)
+        self.btn_check.Enable(False)
+        self.btn_close.Enable(False)
+        self.gauge.SetValue(0)
+        announcer.play_sound("start")
+        announcer.announce(tr("upd_downloading_announce"))
+
+        def _progress(percent: int, stage: str):
+            def _ui():
+                if not self or not self.IsShown():
+                    return
+                pct = max(0, min(100, int(percent)))
+                self.gauge.SetValue(pct)
+                self.lbl_status.SetLabel(tr("upd_downloading_status", stage=stage, percent=pct))
+                milestone = (pct // 25) * 25
+                if milestone in (25, 50, 75, 100) and milestone > self._last_announced_milestone:
+                    self._last_announced_milestone = milestone
+                    announcer.announce(f"{pct}%", interrupt=False)
+            wx.CallAfter(_ui)
+
+        def _worker():
+            ok, msg = download_and_install_update(self.update_info, progress_callback=_progress)
+            wx.CallAfter(self._on_install_completed, ok, msg)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_install_completed(self, ok: bool, msg: str):
+        if not self:
+            return
+        self._is_busy = False
+        if not ok:
+            self.btn_install.Enable(True)
+            self.btn_check.Enable(True)
+            self.btn_close.Enable(True)
+            err_text = tr("upd_error_status", error=msg)
+            self.lbl_status.SetLabel(err_text)
+            announcer.play_sound("error")
+            announcer.announce(tr("upd_error_announce", error=msg))
+            return
+
+        self.gauge.SetValue(100)
+        self.lbl_status.SetLabel(msg)
+        announcer.play_sound("success")
+        announcer.announce(tr("upd_installing_announce"))
+
+        parent = self.GetParent()
+        top_win = wx.GetTopLevelParent(parent) if parent else None
+        self.EndModal(wx.ID_OK)
+        if top_win:
+            top_win.Destroy()
+        app = wx.GetApp()
+        if app:
+            app.ExitMainLoop()
+
+    def on_open_repo(self, event=None):
+        target_url = REPO_URL
+        if self.update_info and self.update_info.html_url:
+            target_url = self.update_info.html_url
+        if not wx.LaunchDefaultBrowser(target_url):
+            webbrowser.open(target_url)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'N':
+                self.txt_notes.SetFocus()
+                return
+            if ch == 'I' and self.btn_install.IsEnabled():
+                self.on_install(None)
+                return
+            if ch == 'G' and self.btn_check.IsEnabled():
+                self.start_check()
+                return
+            if ch == 'R':
+                self.on_open_repo(None)
+                return
+            if ch == 'C' and self.btn_close.IsEnabled():
+                self.EndModal(wx.ID_CANCEL)
+                return
+        event.Skip()
+
+
 # ========================================================================
 # WELCOME SCREEN & FIRST-RUN GUIDED SETUP TOUR
 # ========================================================================
@@ -944,6 +1220,7 @@ HELP_SECTIONS = {
                 "  * Ctrl+H              : Open Recent Generations History dialog\n"
                 "  * Ctrl+Shift+O        : Open Audio Output Folder in File Explorer\n"
                 "  * Ctrl+I              : Announce Text & Script Statistics (words, chars, est. duration)\n"
+                "  * Ctrl+U              : Check for Updates & Direct Auto-Installer from GitHub\n"
                 "  * Ctrl+1 .. Ctrl+6    : Switch directly to Tab 1 through Tab 6 (also Alt+1..6)\n"
                 "  * Ctrl+Tab            : Switch to Next Tab (also Ctrl+PageDown)\n"
                 "  * Ctrl+Shift+Tab      : Switch to Previous Tab (also Ctrl+PageUp)\n"
@@ -1106,6 +1383,7 @@ HELP_SECTIONS = {
                 "  * Ctrl+H              : เปิดหน้าต่างประวัติไฟล์เสียงที่สร้างล่าสุด (History)\n"
                 "  * Ctrl+Shift+O        : เปิดโฟลเดอร์เก็บไฟล์เสียง (Output Folder) ใน File Explorer\n"
                 "  * Ctrl+I              : อ่านสถิติข้อความ (จำนวนคำ ตัวอักษร และเวลาพูดโดยประมาณ)\n"
+                "  * Ctrl+U              : ตรวจสอบและอัปเดตโปรแกรมอัตโนมัติโดยตรงจาก GitHub\n"
                 "  * Ctrl+1 ถึง Ctrl+6    : สลับไปยังแท็บที่ 1 ถึง 6 โดยตรง (หรือกด Alt+1 ถึง 6)\n"
                 "  * Ctrl+Tab            : เลื่อนไปแท็บถัดไป (หรือ Ctrl+PageDown)\n"
                 "  * Ctrl+Shift+Tab      : เลื่อนไปแท็บก่อนหน้า (หรือ Ctrl+PageUp)\n"

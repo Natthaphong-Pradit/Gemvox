@@ -202,9 +202,10 @@ def cli_settings():
     print("2. Test API Key Connection")
     print("3. Toggle Spoken Status Announcements")
     print("4. Toggle Sound Cues (Beeps)")
-    print("5. Return to Main Menu")
+    print("5. Check for Updates & Auto-Install from GitHub")
+    print("6. Return to Main Menu")
 
-    choice = prompt_input("Select an option", default="5")
+    choice = prompt_input("Select an option", default="6")
     if choice == "1":
         new_key = prompt_input("Enter new Gemini API Key")
         if new_key:
@@ -222,6 +223,23 @@ def cli_settings():
         curr = config.get("sound_cues", True)
         config.set("sound_cues", not curr)
         print(f"Sound Cues set to: {not curr}")
+    elif choice == "5":
+        from gemvox.core.updater import check_for_updates, download_and_install_update
+        print("Checking GitHub repository (Natthaphong-Pradit/Gemvox) for updates...")
+        info = check_for_updates()
+        if info.error:
+            print(f"Update check failed: {info.error}")
+            return
+        print(f"Current Version : v{info.current_version}")
+        print(f"Latest Version  : v{info.latest_version}")
+        print(f"Install Mode    : {info.install_mode}")
+        if info.is_newer:
+            ans = prompt_input(f"New version v{info.latest_version} available! Download and install now? (y/n)", default="y")
+        else:
+            ans = prompt_input(f"Already on latest version (v{info.current_version}). Reinstall anyway? (y/n)", default="n")
+        if ans.lower().startswith("y"):
+            ok, msg = download_and_install_update(info, relaunch=False)
+            print(msg)
 
 def run_interactive_cli():
     """Main loop of the accessible interactive CLI."""

@@ -17,6 +17,7 @@ from gemvox.ui.dialogs import (
     StylePresetDialog,
     WelcomeTourDialog,
     GenerationHistoryDialog,
+    UpdateDialog,
     open_output_folder,
 )
 from gemvox.ui.theme import (
@@ -144,6 +145,8 @@ class MainWindow(wx.Frame):
         # Help menu
         help_menu = wx.Menu()
         m_help = help_menu.Append(wx.ID_HELP, tr("menu_help_guide"))
+        m_update = help_menu.Append(wx.ID_ANY, tr("menu_check_updates"))
+        help_menu.AppendSeparator()
         m_about = help_menu.Append(wx.ID_ABOUT, tr("menu_about"))
         menu_bar.Append(help_menu, tr("menu_help"))
 
@@ -180,6 +183,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.on_menu_text_stats, m_stats)
         self.Bind(wx.EVT_MENU, lambda e: self._show_first_run_welcome_tour(), m_tour)
         self.Bind(wx.EVT_MENU, self.on_menu_help, m_help)
+        self.Bind(wx.EVT_MENU, self.on_menu_check_updates, m_update)
         self.Bind(wx.EVT_MENU, self.on_menu_about, m_about)
 
     def _init_ui(self):
@@ -319,6 +323,9 @@ class MainWindow(wx.Frame):
                 return
             if key in (ord('i'), ord('I')):
                 self.on_menu_text_stats(None)
+                return
+            if key in (ord('u'), ord('U')):
+                self.on_menu_check_updates(None)
                 return
         if ctrl and shift and not alt:
             if key in (ord('s'), ord('S')):
@@ -804,6 +811,12 @@ class MainWindow(wx.Frame):
         if res == WelcomeTourDialog.ID_GO_SETTINGS:
             self.switch_tab(5)
             self.focus_tab_primary_control(5)
+
+    def on_menu_check_updates(self, event=None):
+        dlg = UpdateDialog(self)
+        dlg.ShowModal()
+        if dlg:
+            dlg.Destroy()
 
     def on_menu_about(self, event):
         wx.MessageBox(
