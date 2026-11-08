@@ -56,7 +56,7 @@ TRANSLATIONS = {
         "menu_tab3": "3. Voice &Design Studio\tCtrl+3",
         "menu_tab4": "4. Voice &Replication\tCtrl+4",
         "menu_tab5": "5. Voice &Library\tCtrl+5",
-        "menu_tab6": "6. S&ettings & API Key\tCtrl+6",
+        "menu_tab6": "6. S&ettings and API Key\tCtrl+6",
         "menu_next_tab": "&Next Tab\tCtrl+Tab",
         "menu_prev_tab": "&Previous Tab\tCtrl+Shift+Tab",
 
@@ -64,11 +64,11 @@ TRANSLATIONS = {
         "menu_insert_tag": "&Insert Vocal Tag...\tAlt+I",
         "menu_browse_style": "&Browse Style Presets...\tAlt+B",
         "menu_create_style": "&Create Custom Style Preset...\tAlt+C",
-        "menu_text_stats": "Text & &Script Statistics\tCtrl+I",
-        "menu_welcome_tour": "&Welcome Tour & Setup Wizard...",
+        "menu_text_stats": "Text and &Script Statistics\tCtrl+I",
+        "menu_welcome_tour": "&Welcome Tour and Setup Wizard...",
 
         "menu_help": "&Help",
-        "menu_help_guide": "&User Guide & Shortcuts\tF1",
+        "menu_help_guide": "&User Guide and Shortcuts\tF1",
         "menu_about": "&About Gemvox",
 
         # Single Speaker Panel
@@ -76,9 +76,9 @@ TRANSLATIONS = {
         "ss_default_text": "Hello! Welcome to Gemvox, your accessible Gemini 3.8 Flash text-to-speech studio.",
         "btn_insert_tag_i": "&Insert Vocal Tag... (Alt+I)",
         "btn_clear_text": "C&lear Text (Alt+L)",
-        "btn_open_txt": "Open .t&xt (Ctrl+O)",
-        "btn_stats": "Text Stat&s (Ctrl+I)",
-        "ss_box_params": "Voice & Delivery Parameters",
+        "btn_open_txt": "Open .txt (Ctrl+O)",
+        "btn_stats": "Text Stats (Ctrl+I)",
+        "ss_box_params": "Voice and Delivery Parameters",
         "lbl_model": "&Model (Alt+M):",
         "lbl_voice": "&Voice (Alt+V):",
         "btn_audition_u": "A&udition Voice (Alt+U)",
@@ -89,7 +89,7 @@ TRANSLATIONS = {
         "btn_play_audio": "&Play Audio (Alt+P)",
         "btn_stop_audio": "Stop Audio (Alt+&P)",
         "btn_save_audio": "&Save Audio As... (Ctrl+S / Alt+S)",
-        "btn_history_h": "&History (Ctrl+H)",
+        "btn_history_h": "History (Ctrl+H)",
         "status_ready": "Status: Ready.",
         "msg_enter_text": "Please enter text to speak.",
         "msg_text_cleared": "Text cleared.",
@@ -126,7 +126,7 @@ TRANSLATIONS = {
 
         # Voice Replication Panel
         "vr_info": "Voice Replication requires two clean 24kHz mono WAV recordings from the same adult speaker:\n1. Reference audio (10 to 30 seconds of natural speech).\n2. Consent audio clearly reciting the required consent phrase.",
-        "vr_box_cloning": "Voice Cloning & Consent Verification",
+        "vr_box_cloning": "Voice Cloning and Consent Verification",
         "lbl_ref_audio": "&Reference Audio File (Alt+R):",
         "btn_browse_ref": "&Browse Reference... (Alt+B)",
         "lbl_consent_phrase": "Mandatory Consent Phrase:",
@@ -140,13 +140,13 @@ TRANSLATIONS = {
 
         # Voice Library Panel
         "vl_info": "Browse the 30 featured Gemini studio voices, manage your custom voices, or query the Extended Voice Library online:",
-        "vl_box_filters": "Catalog Search & Acoustic Filters",
+        "vl_box_filters": "Catalog Search and Acoustic Filters",
         "lbl_search_query": "&Search Query (Alt+S):",
         "lbl_language": "&Language (Alt+L):",
         "lbl_gender_g": "&Gender (Alt+G):",
         "lbl_domain": "Context &Domain (Alt+D):",
         "btn_search_online": "Search E&xtended Library Online (Alt+X)",
-        "btn_show_prebuilt": "Show &Built-in & Custom Voices (Alt+B)",
+        "btn_show_prebuilt": "Show &Built-in and Custom Voices (Alt+B)",
         "lbl_voices_list": "&Voices List (Alt+V):",
         "btn_audition_a": "A&udition Voice (Alt+U)",
         "btn_use_voice_y": "Use Selected Voice in TTS (Alt+&Y)",
@@ -155,7 +155,7 @@ TRANSLATIONS = {
 
         # Settings Panel
         "set_info": "Configure your Gemini API Key, interface language, studio defaults, and screen reader options:",
-        "set_box_cred": "API Credentials, Language & Studio Defaults",
+        "set_box_cred": "API Credentials, Language and Studio Defaults",
         "lbl_api_key": "Gemini API &Key (Alt+K):",
         "btn_test_conn": "Test &Connection (Alt+C)",
         "btn_get_key": "&Get API Key (Alt+G)",
@@ -166,7 +166,7 @@ TRANSLATIONS = {
         "lbl_ui_language": "Interface &Language (Alt+L):",
         "lang_en": "English (Default)",
         "lang_th": "ไทย (Thai)",
-        "set_box_acc": "Accessibility & Audio Feedback",
+        "set_box_acc": "Accessibility and Audio Feedback",
         "chk_announcements": "Enable Spoken Status Announcements (Active Screen &Reader) (Alt+R)",
         "chk_beeps": "Enable Auditory Sound Cues (&Beeps) (Alt+B)",
         "chk_autoplay": "A&uto-play speech immediately upon generation (Alt+U)",
@@ -179,9 +179,9 @@ TRANSLATIONS = {
         "dlg_tag_title": "Insert Vocal Tag",
         "dlg_tag_banner_title": "INSERT VOCAL TAG",
         "dlg_tag_banner_sub": "Precision inline non-speech cues and breathing pauses",
-        "dlg_tag_info": "Select an inline vocal tag to insert at your cursor position:\n(Arrow up and down, then press Enter or click Insert)",
-        "btn_insert": "&Insert Tag",
-        "btn_cancel": "&Cancel",
+        "dlg_tag_info": "Select an inline vocal tag to insert at your cursor position:\n(Arrow up and down, then press Enter or Alt+I to Insert)",
+        "btn_insert": "&Insert Tag (Alt+I)",
+        "btn_cancel": "Cancel (Esc)",
 
         "dlg_custom_style_title": "Create Your Own Custom Style Preset",
         "dlg_custom_style_banner": "CREATE CUSTOM STYLE PRESET",
@@ -189,7 +189,7 @@ TRANSLATIONS = {
         "dlg_custom_style_info": "Create a reusable custom style preset so you don't have to type instructions repeatedly.\nOnce saved, it will automatically appear in Browse Styles.",
         "lbl_preset_name": "Preset &Name (Alt+N):",
         "lbl_preset_style": "&Style / Delivery Instruction (Alt+S):",
-        "btn_save_preset": "&Save Custom Preset",
+        "btn_save_preset": "Save Custom &Preset (Alt+P)",
         "announce_enter_preset_name": "Please enter a preset name.",
         "announce_enter_preset_style": "Please enter a style or delivery instruction.",
         "announce_created_custom_style": "Created custom style preset '{name}'.",
@@ -197,10 +197,10 @@ TRANSLATIONS = {
 
         "dlg_style_title": "Select Style Preset",
         "dlg_style_banner": "STYLE & EMOTION PRESETS",
-        "dlg_style_sub": "Curated & custom vocal delivery styles for Gemini 3.8 Flash TTS",
+        "dlg_style_sub": "Curated and custom vocal delivery styles for Gemini 3.8 Flash TTS",
         "dlg_style_info": "Choose a custom or built-in style preset to guide pace, tone, and emotion:",
         "btn_delete_custom": "&Delete Custom Style (Alt+D)",
-        "btn_apply_style": "&Apply Style",
+        "btn_apply_style": "&Apply Style (Alt+A)",
 
         # Recent Generations History Dialog
         "dlg_history_title": "Recent Generations History (Ctrl+H)",
@@ -227,7 +227,7 @@ TRANSLATIONS = {
         "btn_prev_step": "< &Previous (Alt+P)",
         "btn_next_step": "&Next Step (Alt+N) >",
         "btn_go_settings": "&Go to Settings Now (Alt+G)",
-        "btn_skip_tour": "&Start Using Gemvox (Esc)",
+        "btn_skip_tour": "&Start Using Gemvox (Alt+S / Esc)",
 
         # Help Dialog
         "help_title": "Gemvox User Guide & Keyboard Shortcuts (F1)",
@@ -406,8 +406,8 @@ TRANSLATIONS = {
         "ss_default_text": "สวัสดีครับ! ยินดีต้อนรับสู่ Gemvox สตูดิโอสังเคราะห์เสียงพูด Gemini 3.8 Flash TTS",
         "btn_insert_tag_i": "แทรกแท็กเสียง... (Alt+&I)",
         "btn_clear_text": "ล้างข้อความ (Alt+&L)",
-        "btn_open_txt": "เปิดไฟล์ .t&xt (Ctrl+O)",
-        "btn_stats": "สถิติข้อความ (&s / Ctrl+I)",
+        "btn_open_txt": "เปิดไฟล์ .txt (Ctrl+O)",
+        "btn_stats": "สถิติข้อความ (Ctrl+I)",
         "ss_box_params": "พารามิเตอร์เสียงและอารมณ์การพูด",
         "lbl_model": "โมเดล (Alt+&M):",
         "lbl_voice": "เสียงพูด (Alt+&V):",
@@ -419,7 +419,7 @@ TRANSLATIONS = {
         "btn_play_audio": "เล่นเสียง (Alt+&P)",
         "btn_stop_audio": "หยุดเสียง (Alt+&P)",
         "btn_save_audio": "บันทึกไฟล์เสียง... (Ctrl+S / Alt+&S)",
-        "btn_history_h": "ประวัติเสียง (&History / Ctrl+H)",
+        "btn_history_h": "ประวัติเสียง (Ctrl+H)",
         "status_ready": "สถานะ: พร้อมทำงาน",
         "msg_enter_text": "กรุณาพิมพ์ข้อความที่ต้องการให้พูด",
         "msg_text_cleared": "ล้างข้อความเรียบร้อยแล้ว",
@@ -486,7 +486,7 @@ TRANSLATIONS = {
         # Settings Panel
         "set_info": "ตั้งค่ารหัส Gemini API Key ภาษาของโปรแกรม ค่าเริ่มต้นของสตูดิโอ และตัวเลือกการเข้าถึงสำหรับ Screen Reader:",
         "set_box_cred": "ข้อมูล API Key ภาษา และค่าเริ่มต้นของสตูดิโอ",
-        "lbl_api_key": "รหัส Gemini API &Key (Alt+K):",
+        "lbl_api_key": "รหัส Gemini API Key (Alt+&K):",
         "btn_test_conn": "ทดสอบการเชื่อมต่อ (Alt+&C)",
         "btn_get_key": "รับรหัส API Key (Alt+&G)",
         "lbl_output_folder": "โฟลเดอร์บันทึกไฟล์เสียง (Alt+&D):",
@@ -497,7 +497,7 @@ TRANSLATIONS = {
         "lang_en": "English (ค่าเริ่มต้น)",
         "lang_th": "ไทย (Thai)",
         "set_box_acc": "การเข้าถึงและเสียงแจ้งเตือนสถานะ",
-        "chk_announcements": "เปิดใช้การประกาศสถานะด้วยเสียงผ่าน Active Screen &Reader (Alt+R)",
+        "chk_announcements": "เปิดใช้การประกาศสถานะด้วยเสียงผ่าน Active Screen Reader (Alt+&R)",
         "chk_beeps": "เปิดใช้เสียงสัญญาณเตือนเมื่อเริ่ม/เสร็จสิ้นงาน (Alt+&B)",
         "chk_autoplay": "เล่นเสียงพูดอัตโนมัติทันทีที่สังเคราะห์เสร็จ (Alt+&U)",
         "btn_save_settings": "บันทึกการตั้งค่า (Alt+&S)",
@@ -509,9 +509,9 @@ TRANSLATIONS = {
         "dlg_tag_title": "แทรกแท็กเสียงธรรมชาติ (Insert Vocal Tag)",
         "dlg_tag_banner_title": "แทรกแท็กเสียงธรรมชาติ (VOCAL TAG)",
         "dlg_tag_banner_sub": "เพิ่มจังหวะหยุดหายใจ เสียงถอนหายใจ เสียงหัวเราะ หรือกระซิบลงในตำแหน่งเคอร์เซอร์",
-        "dlg_tag_info": "เลือกแท็กเสียงที่ต้องการแทรกตรงตำแหน่งเคอร์เซอร์ของคุณ:\n(กดลูกศรขึ้น/ลง แล้วกด Enter หรือคลิกปุ่มแทรกแท็ก)",
-        "btn_insert": "แทรกแท็ก (&Insert)",
-        "btn_cancel": "ยกเลิก (&Cancel)",
+        "dlg_tag_info": "เลือกแท็กเสียงที่ต้องการแทรกตรงตำแหน่งเคอร์เซอร์ของคุณ:\n(กดลูกศรขึ้น/ลง แล้วกด Enter หรือกด Alt+I เพื่อแทรกแท็ก)",
+        "btn_insert": "แทรกแท็ก (Alt+&I)",
+        "btn_cancel": "ยกเลิก (Esc)",
 
         "dlg_custom_style_title": "สร้างพรีเซ็ตอารมณ์เสียงส่วนตัว",
         "dlg_custom_style_banner": "สร้างพรีเซ็ตอารมณ์เสียงส่วนตัว",
@@ -519,7 +519,7 @@ TRANSLATIONS = {
         "dlg_custom_style_info": "ตั้งชื่อและระบุคำสั่งอารมณ์เสียง เพื่อเก็บไว้ในรายการเลือกสไตล์ (Browse Styles) โดยไม่ต้องพิมพ์ซ้ำ",
         "lbl_preset_name": "ชื่อพรีเซ็ต (Alt+&N):",
         "lbl_preset_style": "คำสั่งอารมณ์ / สไตล์การพูด (Alt+&S):",
-        "btn_save_preset": "บันทึกพรีเซ็ตส่วนตัว (&Save)",
+        "btn_save_preset": "บันทึกพรีเซ็ตส่วนตัว (Alt+&P)",
         "announce_enter_preset_name": "กรุณาตั้งชื่อพรีเซ็ตสไตล์",
         "announce_enter_preset_style": "กรุณาระบุคำสั่งอารมณ์หรือสไตล์การพูด",
         "announce_created_custom_style": "สร้างพรีเซ็ตสไตล์ส่วนตัว '{name}' เรียบร้อยแล้ว",
@@ -530,7 +530,7 @@ TRANSLATIONS = {
         "dlg_style_sub": "เลือกสไตล์การพูดมาตรฐานหรือสไตล์ส่วนตัวที่คุณสร้างไว้",
         "dlg_style_info": "เลือกสไตล์การพูดเพื่อกำหนดจังหวะ น้ำเสียง และอารมณ์ของโมเดล:",
         "btn_delete_custom": "ลบสไตล์ส่วนตัว (Alt+&D)",
-        "btn_apply_style": "ใช้สไตล์นี้ (&Apply)",
+        "btn_apply_style": "ใช้สไตล์นี้ (Alt+&A)",
 
         # Recent Generations History Dialog
         "dlg_history_title": "ประวัติไฟล์เสียงที่สร้างล่าสุด (Ctrl+H)",
@@ -557,7 +557,7 @@ TRANSLATIONS = {
         "btn_prev_step": "< ย้อนกลับ (Alt+&P)",
         "btn_next_step": "ขั้นตอนถัดไป (Alt+&N) >",
         "btn_go_settings": "ไปที่หน้าการตั้งค่าทันที (Alt+&G)",
-        "btn_skip_tour": "เริ่มใช้งาน Gemvox (&Start / Esc)",
+        "btn_skip_tour": "เริ่มใช้งาน Gemvox (Alt+&S / Esc)",
 
         # Help Dialog
         "help_title": "คู่มือการใช้งานและคีย์ลัด Gemvox อย่างเป็นระบบ (F1)",

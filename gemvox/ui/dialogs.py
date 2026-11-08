@@ -89,6 +89,16 @@ class InlineTagDialog(wx.Dialog):
 
         insert_btn.Bind(wx.EVT_BUTTON, self.on_insert)
         self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_insert)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'I':
+                self.on_insert(None)
+                return
+        event.Skip()
 
     def on_insert(self, event):
         sel = self.listbox.GetSelection()
@@ -166,6 +176,22 @@ class CreateCustomStyleDialog(wx.Dialog):
         self.SetSize((590, 330))
 
         save_btn.Bind(wx.EVT_BUTTON, self.on_save)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'N':
+                self.txt_name.SetFocus()
+                return
+            if ch == 'S':
+                self.txt_style.SetFocus()
+                return
+            if ch == 'P':
+                self.on_save(None)
+                return
+        event.Skip()
 
     def on_save(self, event):
         name = self.txt_name.GetValue().strip()
@@ -248,6 +274,22 @@ class StylePresetDialog(wx.Dialog):
         self.listbox.Bind(wx.EVT_LISTBOX, self.on_selection_changed)
         self.btn_create_custom.Bind(wx.EVT_BUTTON, self.on_create_custom)
         self.btn_delete_custom.Bind(wx.EVT_BUTTON, self.on_delete_custom)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'C':
+                self.on_create_custom(None)
+                return
+            if ch == 'D' and self.btn_delete_custom.IsEnabled():
+                self.on_delete_custom(None)
+                return
+            if ch == 'A':
+                self.on_apply(None)
+                return
+        event.Skip()
 
     def refresh_presets(self, select_name: str = None):
         self.presets = get_all_style_presets()
@@ -520,6 +562,9 @@ class GenerationHistoryDialog(wx.Dialog):
             if ch == 'G':
                 self.listbox.SetFocus()
                 return
+            if ch == 'C':
+                self.EndModal(wx.ID_CANCEL)
+                return
 
         event.Skip()
 
@@ -695,9 +740,28 @@ class WelcomeTourDialog(wx.Dialog):
         self.btn_next.Bind(wx.EVT_BUTTON, self.on_next)
         self.btn_go_settings.Bind(wx.EVT_BUTTON, self.on_go_settings)
         self.btn_close.Bind(wx.EVT_BUTTON, self.on_close)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
 
         self._update_step_view(announce_step=False)
         wx.CallAfter(self.txt_body.SetFocus)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'P' and self.btn_prev.IsEnabled():
+                self.on_prev(None)
+                return
+            if ch == 'N' and self.btn_next.IsEnabled():
+                self.on_next(None)
+                return
+            if ch == 'G':
+                self.on_go_settings(None)
+                return
+            if ch == 'S':
+                self.on_close(None)
+                return
+        event.Skip()
 
     def _update_step_view(self, announce_step: bool = True):
         step_data = self.steps[self.current_step]
@@ -1157,12 +1221,31 @@ class HelpDialog(wx.Dialog):
 
         self.list_topics.Bind(wx.EVT_LISTBOX, self.on_topic_selected)
         btn_tour.Bind(wx.EVT_BUTTON, self.on_open_tour)
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
 
         if topic_titles:
             self.list_topics.SetSelection(0)
             self._load_section(0, announce=False)
 
         wx.CallAfter(self.list_topics.SetFocus)
+
+    def on_char_hook(self, event):
+        key = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
+            ch = chr(key).upper()
+            if ch == 'T':
+                self.list_topics.SetFocus()
+                return
+            if ch == 'G':
+                self.txt_content.SetFocus()
+                return
+            if ch == 'W':
+                self.on_open_tour(None)
+                return
+            if ch == 'C':
+                self.EndModal(wx.ID_CANCEL)
+                return
+        event.Skip()
 
     def _load_section(self, idx: int, announce: bool = False):
         if 0 <= idx < len(self.sections):

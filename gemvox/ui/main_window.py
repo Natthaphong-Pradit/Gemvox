@@ -303,10 +303,16 @@ class MainWindow(wx.Frame):
             self.on_menu_play(None)
             return
 
-        # 5b. Global File & Workflow Shortcuts (Ctrl+O, Ctrl+Shift+S, Ctrl+H, Ctrl+Shift+O, Ctrl+I)
+        # 5b. Global File & Workflow Shortcuts (Ctrl+O, Ctrl+S, Ctrl+Shift+S, Ctrl+H, Ctrl+Shift+O, Ctrl+I, Alt+Shift+L, F1)
+        if not ctrl and not alt and not shift and key == wx.WXK_F1:
+            self.on_menu_help(None)
+            return
         if ctrl and not alt and not shift:
             if key in (ord('o'), ord('O')):
                 self.on_menu_open_script(None)
+                return
+            if key in (ord('s'), ord('S')):
+                self.on_menu_save(None)
                 return
             if key in (ord('h'), ord('H')):
                 self.on_menu_history(None)
@@ -320,6 +326,10 @@ class MainWindow(wx.Frame):
                 return
             if key in (ord('o'), ord('O')):
                 self.on_menu_open_output(None)
+                return
+        if alt and shift and not ctrl:
+            if key in (ord('l'), ord('L')):
+                self.on_edit_clear(None)
                 return
 
         # 6. Active Tab Mnemonic Shortcuts (Alt+Key, excluding MenuBar keys F, E, A, T, O, H)
