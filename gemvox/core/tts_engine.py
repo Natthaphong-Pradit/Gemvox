@@ -6,7 +6,7 @@ import time
 import wave
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Set, Tuple, Any
 
 from gemvox.config import config
 from gemvox.i18n import tr
@@ -38,8 +38,8 @@ class TTSEngine:
     """
 
     def __init__(self):
-        self._unavailable_models: set[str] = set()
-        self._unavailable_interactions_models: set[str] = set()
+        self._unavailable_models: Set[str] = set()
+        self._unavailable_interactions_models: Set[str] = set()
         self._discovered_tts_models: Optional[List[str]] = None
         self._last_working_model: Optional[str] = None
 

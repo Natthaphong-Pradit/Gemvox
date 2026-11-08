@@ -7,6 +7,7 @@ import wave
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 import wx
 from gemvox.config import config
 from gemvox.i18n import tr
@@ -431,7 +432,7 @@ class GenerationHistoryDialog(wx.Dialog):
         self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_selected)
         self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
 
-    def _read_selected_wav_bytes(self) -> bytes | None:
+    def _read_selected_wav_bytes(self) -> Optional[bytes]:
         target = self._get_selected_file()
         if target and target.is_file():
             try:
@@ -505,7 +506,7 @@ class GenerationHistoryDialog(wx.Dialog):
         if announce:
             announcer.announce(tr("announce_history_count", count=len(self.files_data)))
 
-    def _get_selected_file(self) -> Path | None:
+    def _get_selected_file(self) -> Optional[Path]:
         sel = self.listbox.GetSelection()
         if sel != wx.NOT_FOUND and sel < len(self.files_data):
             return self.files_data[sel]
@@ -629,7 +630,7 @@ class UpdateDialog(wx.Dialog):
             title=tr("dlg_update_title"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
         )
-        self.update_info: UpdateInfo | None = None
+        self.update_info: Optional[UpdateInfo] = None
         self._is_busy = False
         self._last_announced_milestone = -1
         style_panel(self, accessible_name=tr("dlg_update_title"))

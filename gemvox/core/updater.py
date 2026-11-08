@@ -10,7 +10,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from gemvox import VERSION
 
@@ -73,7 +73,7 @@ def get_app_root_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def _http_get_json(url: str, timeout: int = 12) -> dict | list:
+def _http_get_json(url: str, timeout: int = 12) -> Any:
     req = urllib.request.Request(
         url,
         headers={
@@ -419,6 +419,11 @@ def download_and_install_update(
             zf.extractall(extract_dir)
         inner_root = _find_extracted_root(extract_dir)
 
+        # Clear stale bytecode caches before copying updated source files
+        for pycache in app_root.rglob("__pycache__"):
+            if "venv" not in pycache.parts and ".venv" not in pycache.parts:
+                shutil.rmtree(pycache, ignore_errors=True)
+
         protected_names = {"venv", ".venv", ".env", "output", ".git", "__pycache__", "build", "dist", "config.json", "config.json.bak"}
         for item in inner_root.iterdir():
             if item.name in protected_names:
@@ -468,9 +473,11 @@ def relaunch_current_app():
     if not getattr(sys, "frozen", False):
         app_root = get_app_root_dir()
         entry_script = app_root / "gemvox.py"
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        exe_path = Path(sys.executable)
+        pythonw_candidate = exe_path.with_name("pythonw.exe")
+        launcher = str(pythonw_candidate) if pythonw_candidate.is_file() else str(exe_path)
         subprocess.Popen(
-            [sys.executable, str(entry_script)],
+            [launcher, "-B", str(entry_script)],
             cwd=str(app_root),
-            creationflags=creationflags,
         )
+

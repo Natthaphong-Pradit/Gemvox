@@ -15,6 +15,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import List
 
 from gemvox import VERSION
 
@@ -32,23 +33,24 @@ Accessible Multi-Speaker AI Voice Studio powered by Google Gemini
 ====================================================================
 
 WHAT'S NEW IN v{VERSION}:
+- Fix 404 Model Not Found & Automatic Multi-Model Fallback:
+  Resolves the "Model 'gemini-3.8-flash-tts' not found (404)" error on
+  standard Google AI Studio API keys by defaulting to Universal AI Studio
+  models (gemini-2.5-flash-preview-tts) and automatically falling back
+  across Gemini 2.5 Flash TTS, 2.5 Pro TTS, 3.1 Flash TTS, and 3.8 TTS,
+  with automatic raw PCM-to-WAV RIFF wrapping.
+- Studio Audio Player & Transport Deck Redesign:
+  Full non-blocking studio transport controls across Single-Speaker,
+  Multi-Speaker, Voice Design, and Recent Generations History (Ctrl+H):
+  * Play / Pause / Resume toggle (Alt+P) & dedicated Stop (Alt+Q)
+  * Rewind 5 Seconds (-5s, F7) & Fast-Forward 5 Seconds (+5s, F8)
+  * Interactive Seek / Timeline Scrub Slider & MM:SS / MM:SS readout
+  * Volume Slider (0% - 100%, F9 Volume Down / F10 Volume Up)
+  * Playback Speed Selector (0.75x, 1.0x, 1.25x, 1.5x, 2.0x, Ctrl+Shift+P)
+  * Loop Playback toggle (Ctrl+L)
 - Direct GitHub Auto-Updater (Ctrl+U): Check for updates, download,
   and automatically install/reinstall the latest version directly from
   https://github.com/Natthaphong-Pradit/Gemvox without manual extraction.
-- Real-Time Custom Voice Synchronization & Management: Newly created or
-  replicated voices sync across all tabs immediately without restarting.
-  Added "Use Selected Voice in TTS (Alt+Y)" and "Remove Custom Voice (Alt+R)".
-- 100% Bilingual Screen Reader Localization (English & Thai): All spoken
-  screen reader announcements, status bar messages, and dialogs are fully
-  localized in both English and Thai.
-- Recent Generations History Dialog (Ctrl+H): Browse, replay/stop (Enter /
-  Alt+P), export copies (Alt+S), or delete (Alt+D) generated WAV files,
-  plus open the output folder directly (Ctrl+Shift+O).
-- Script & Text Productivity Tools: Open .txt scripts (Ctrl+O), save
-  scripts (Ctrl+Shift+S), and announce Text & Script Statistics (Ctrl+I:
-  word count, character count, line count, and estimated speech duration).
-- 100% Shortcut & Mnemonic Consistency: Every button and control's '&'
-  mnemonic matches its (Alt+Key) label 100% with zero collisions.
 
 HOW TO RUN:
 1. Run "Gemvox.exe" inside this folder.
@@ -64,7 +66,12 @@ HOW TO RUN:
 KEYBOARD SHORTCUTS:
 - F1                : Open User Guide & Keyboard Shortcuts (6 Chapters)
 - Ctrl+Enter / Alt+G: Generate Speech / Dialogue / Voice Design
-- Alt+P             : Play / Stop Audio immediately
+- Alt+P             : Play / Pause / Resume Audio immediately
+- Alt+Q             : Stop Audio & Reset to 00:00
+- F7 / F8           : Rewind 5s (-5s) / Fast-Forward 5s (+5s)
+- F9 / F10          : Volume Down (-10%) / Volume Up (+10%)
+- Ctrl+L            : Toggle Loop Playback
+- Ctrl+Shift+P      : Cycle Playback Speed (0.75x - 2.0x)
 - Ctrl+S / Alt+S    : Save Audio File as WAV
 - Ctrl+O            : Open .txt Text / Script File
 - Ctrl+Shift+S      : Save Text / Script File As .txt
@@ -77,7 +84,7 @@ KEYBOARD SHORTCUTS:
 """
 
 
-def run_step(cmd: list[str], desc: str):
+def run_step(cmd: List[str], desc: str):
     print(f"\n=== {desc} ===")
     print("Running:", " ".join(str(c) for c in cmd))
     subprocess.run(cmd, cwd=str(ROOT_DIR), check=True)

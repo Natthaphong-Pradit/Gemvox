@@ -48,27 +48,27 @@ class AudioTransportBar:
         # Row 1: Transport Buttons + Seek Slider + Time Readout
         row1 = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.btn_play = wx.Button(self.box, label=tr(self.play_label_key))
+        self.btn_play = wx.Button(parent, label=tr(self.play_label_key))
         self.btn_play.Enable(False)
         style_button(self.btn_play, "success")
 
-        self.btn_stop = wx.Button(self.box, label=tr("btn_stop_audio_q"))
+        self.btn_stop = wx.Button(parent, label=tr("btn_stop_audio_q"))
         self.btn_stop.Enable(False)
         style_button(self.btn_stop, "danger")
 
-        self.btn_rew = wx.Button(self.box, label=tr("btn_rewind_5s"))
+        self.btn_rew = wx.Button(parent, label=tr("btn_rewind_5s"))
         self.btn_rew.Enable(False)
         style_button(self.btn_rew, "secondary")
 
-        self.btn_ff = wx.Button(self.box, label=tr("btn_forward_5s"))
+        self.btn_ff = wx.Button(parent, label=tr("btn_forward_5s"))
         self.btn_ff.Enable(False)
         style_button(self.btn_ff, "secondary")
 
-        lbl_pos = wx.StaticText(self.box, label=tr("lbl_player_pos"))
+        lbl_pos = wx.StaticText(parent, label=tr("lbl_player_pos"))
         style_label(lbl_pos, "muted")
 
         self.slider_seek = wx.Slider(
-            self.box,
+            parent,
             value=0,
             minValue=0,
             maxValue=1000,
@@ -79,7 +79,7 @@ class AudioTransportBar:
         self.slider_seek.SetForegroundColour(StudioColors.ACCENT_GOLD)
         self.slider_seek.Enable(False)
 
-        self.lbl_time = wx.StaticText(self.box, label="00:00 / 00:00")
+        self.lbl_time = wx.StaticText(parent, label="00:00 / 00:00")
         style_label(self.lbl_time, "mono")
 
         row1.Add(self.btn_play, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -93,11 +93,11 @@ class AudioTransportBar:
         # Row 2: Volume Slider + Playback Speed + Loop Checkbox
         row2 = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.lbl_vol = wx.StaticText(self.box, label=tr("lbl_player_volume", vol=audio_player.volume))
+        self.lbl_vol = wx.StaticText(parent, label=tr("lbl_player_volume", vol=audio_player.volume))
         style_label(self.lbl_vol, "muted")
 
         self.slider_vol = wx.Slider(
-            self.box,
+            parent,
             value=audio_player.volume,
             minValue=0,
             maxValue=100,
@@ -108,12 +108,12 @@ class AudioTransportBar:
         self.slider_vol.SetBackgroundColour(StudioColors.BG_ELEVATED)
         self.slider_vol.SetForegroundColour(StudioColors.ACCENT_PRIMARY)
 
-        lbl_speed = wx.StaticText(self.box, label=tr("lbl_player_speed"))
+        lbl_speed = wx.StaticText(parent, label=tr("lbl_player_speed"))
         style_label(lbl_speed, "muted")
 
         speed_choices = [f"{s:g}x" for s in SPEED_PRESETS]
         self.combo_speed = wx.ComboBox(
-            self.box,
+            parent,
             choices=speed_choices,
             style=wx.CB_READONLY,
             name=tr("lbl_player_speed")
@@ -121,7 +121,7 @@ class AudioTransportBar:
         style_combo(self.combo_speed)
         self._sync_speed_selection(audio_player.speed)
 
-        self.chk_loop = wx.CheckBox(self.box, label=tr("chk_player_loop"))
+        self.chk_loop = wx.CheckBox(parent, label=tr("chk_player_loop"))
         style_checkbox(self.chk_loop)
         self.chk_loop.SetFont(get_font(9))
         self.chk_loop.SetValue(audio_player.loop)
@@ -216,52 +216,59 @@ class AudioTransportBar:
         audio_player.set_loop(self.chk_loop.GetValue(), announce=True)
 
     def _on_transport_event(self, state: str, cur_sec: float, tot_sec: float):
+        if not wx.GetApp():
+            return
+
         def _update():
-            if not self.box:
-                return
-            self._updating_ui = True
             try:
-                if state == "playing":
-                    self.btn_play.SetLabel(tr(self.pause_label_key))
-                    style_button(self.btn_play, "gold")
-                    self.btn_play.Enable(True)
-                    self.btn_stop.Enable(True)
-                elif state == "paused":
-                    self.btn_play.SetLabel(tr(self.resume_label_key))
-                    style_button(self.btn_play, "success")
-                    self.btn_play.Enable(True)
-                    self.btn_stop.Enable(True)
-                else:
-                    self.btn_play.SetLabel(tr(self.play_label_key))
-                    style_button(self.btn_play, "success")
-                    self.btn_play.Enable(self._has_local_audio or audio_player.has_audio)
-                    self.btn_stop.Enable(False)
+                if not self.box or not self.btn_play:
+                    return
+                self._updating_ui = True
+                try:
+                    if state == "playing":
+                        self.btn_play.SetLabel(tr(self.pause_label_key))
+                        style_button(self.btn_play, "gold")
+                        self.btn_play.Enable(True)
+                        self.btn_stop.Enable(True)
+                    elif state == "paused":
+                        self.btn_play.SetLabel(tr(self.resume_label_key))
+                        style_button(self.btn_play, "success")
+                        self.btn_play.Enable(True)
+                        self.btn_stop.Enable(True)
+                    else:
+                        self.btn_play.SetLabel(tr(self.play_label_key))
+                        style_button(self.btn_play, "success")
+                        self.btn_play.Enable(self._has_local_audio or audio_player.has_audio)
+                        self.btn_stop.Enable(False)
 
-                has_timeline = (tot_sec > 0) or self._has_local_audio
-                self.btn_rew.Enable(has_timeline)
-                self.btn_ff.Enable(has_timeline)
-                self.slider_seek.Enable(has_timeline)
+                    has_timeline = (tot_sec > 0) or self._has_local_audio
+                    self.btn_rew.Enable(has_timeline)
+                    self.btn_ff.Enable(has_timeline)
+                    self.slider_seek.Enable(has_timeline)
 
-                if tot_sec > 0:
-                    pos_val = int(round((cur_sec / tot_sec) * 1000))
-                    pos_val = max(0, min(1000, pos_val))
-                else:
-                    pos_val = 0
+                    if tot_sec > 0:
+                        pos_val = int(round((cur_sec / tot_sec) * 1000))
+                        pos_val = max(0, min(1000, pos_val))
+                    else:
+                        pos_val = 0
 
-                if wx.Window.FindFocus() != self.slider_seek:
-                    self.slider_seek.SetValue(pos_val)
+                    if wx.Window.FindFocus() != self.slider_seek:
+                        self.slider_seek.SetValue(pos_val)
 
-                self.lbl_time.SetLabel(f"{format_mm_ss(cur_sec)} / {format_mm_ss(tot_sec)}")
+                    self.lbl_time.SetLabel(f"{format_mm_ss(cur_sec)} / {format_mm_ss(tot_sec)}")
 
-                vol = audio_player.volume
-                if self.slider_vol.GetValue() != vol:
-                    self.slider_vol.SetValue(vol)
-                self.lbl_vol.SetLabel(tr("lbl_player_volume", vol=vol))
+                    vol = audio_player.volume
+                    if self.slider_vol.GetValue() != vol:
+                        self.slider_vol.SetValue(vol)
+                    self.lbl_vol.SetLabel(tr("lbl_player_volume", vol=vol))
 
-                self._sync_speed_selection(audio_player.speed)
-                if self.chk_loop.GetValue() != audio_player.loop:
-                    self.chk_loop.SetValue(audio_player.loop)
-            finally:
-                self._updating_ui = False
+                    self._sync_speed_selection(audio_player.speed)
+                    if self.chk_loop.GetValue() != audio_player.loop:
+                        self.chk_loop.SetValue(audio_player.loop)
+                finally:
+                    self._updating_ui = False
+            except RuntimeError:
+                pass
 
         wx.CallAfter(_update)
+
