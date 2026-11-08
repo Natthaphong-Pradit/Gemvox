@@ -11,8 +11,10 @@ from gemvox.core.voice_catalog import (
     find_voice
 )
 from gemvox.core.tts_engine import tts_engine
-from gemvox.core.audio_player import audio_player
-from gemvox.core.client import client_manager
+try:
+    from gemvox.core.client import client_manager
+except ImportError:
+    from gemvox.core import client_manager
 
 def print_accessible_header(title: str):
     print("\n" + "=" * 60)

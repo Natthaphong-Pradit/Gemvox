@@ -11,7 +11,10 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
-from gemvox.core.client import client_manager
+try:
+    from gemvox.core.client import client_manager
+except ImportError:
+    from gemvox.core import client_manager
 from gemvox.core.voice_catalog import (
     PREBUILT_VOICES,
     find_voice,

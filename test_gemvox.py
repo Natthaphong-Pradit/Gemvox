@@ -63,9 +63,10 @@ def main():
         from gemvox.config import config
         from gemvox.i18n import tr
         from gemvox.core.audio_player import audio_player
+        from gemvox.core.client import client_manager
         from gemvox.core.tts_engine import tts_engine
         from gemvox.core.updater import check_for_updates
-        print_result("Gemvox Core Modules (config, i18n, player, engine, updater)", True)
+        print_result("Gemvox Core Modules (config, i18n, client, player, engine, updater)", True)
     except Exception as e:
         print_result("Gemvox Core Modules", False, str(e))
         all_ok = False

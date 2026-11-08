@@ -1,16 +1,16 @@
 import argparse
 import sys
 from gemvox.config import config
-from gemvox.core.tts_engine import tts_engine
-from gemvox.core.audio_player import audio_player
-from gemvox.core.voice_catalog import PREBUILT_VOICES, find_voice
-from gemvox.core.client import client_manager
+
 
 def handle_speak(args):
+    from gemvox.core.tts_engine import tts_engine
+    from gemvox.core.audio_player import audio_player
+
     text = args.text
     voice = args.voice or config.get("default_voice", "Kore")
     style = args.style or config.get("default_style", "cheerful and friendly")
-    model = args.model or config.get("default_model", "gemini-3.8-flash-tts")
+    model = args.model or config.get("default_model", "gemini-2.5-flash-preview-tts")
     output = args.out
 
     print(f"Synthesizing text with Gemini 3.8 Flash TTS [Voice: {voice}, Model: {model}]...")
@@ -30,6 +30,9 @@ def handle_speak(args):
             time.sleep(0.2)
 
 def handle_dialogue(args):
+    from gemvox.core.tts_engine import tts_engine
+    from gemvox.core.audio_player import audio_player
+
     with open(args.file, "r", encoding="utf-8") as f:
         script = f.read()
 
@@ -42,7 +45,7 @@ def handle_dialogue(args):
             if ":" in pair:
                 s, v = pair.split(":", 1)
                 speaker_voice_map[s.strip()] = v.strip()
-    
+
     # Fill remaining speakers
     defaults = ["Puck", "Kore", "Zephyr", "Charon"]
     for i, s in enumerate(speakers):
@@ -61,7 +64,11 @@ def handle_dialogue(args):
         while audio_player.is_playing:
             time.sleep(0.2)
 
+
 def handle_voices(args):
+    from gemvox.core.tts_engine import tts_engine
+    from gemvox.core.voice_catalog import PREBUILT_VOICES
+
     if args.search:
         print(f"Searching Extended Voice Library for '{args.search}'...")
         results = tts_engine.search_voice_library(search_query=args.search)
@@ -72,7 +79,10 @@ def handle_voices(args):
         for v in PREBUILT_VOICES:
             print(f"{v.id:<15} | Tone: {v.tone:<12} | Gender: {v.gender:<8} | {v.description}")
 
+
 def handle_design(args):
+    from gemvox.core.tts_engine import tts_engine
+
     name = args.name
     prompt = args.prompt
     gender = args.gender or "neutral"

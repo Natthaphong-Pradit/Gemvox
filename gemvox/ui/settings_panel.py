@@ -7,7 +7,10 @@ import wx
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
-from gemvox.core.client import client_manager
+try:
+    from gemvox.core.client import client_manager
+except ImportError:
+    from gemvox.core import client_manager
 from gemvox.core.voice_catalog import SUPPORTED_MODELS, get_all_voices
 from gemvox.ui.dialogs import UpdateDialog
 from gemvox.ui.theme import (
