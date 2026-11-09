@@ -4,7 +4,10 @@ import platform
 import queue
 import sys
 import threading
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 from pathlib import Path
 from gemvox.config import config
 
@@ -89,7 +92,10 @@ class ScreenReaderAnnouncer:
 
     def _find_and_load_dll(self, dll_names: list[str], use_cdll: bool = False):
         """Search candidate directories and load the first matching DLL for the current architecture."""
-        loader = ctypes.cdll if use_cdll else ctypes.windll
+        windll = getattr(ctypes, "windll", None)
+        loader = ctypes.cdll if use_cdll else windll
+        if loader is None:
+            return None
         candidate_dirs = _get_candidate_dirs()
 
         for dll_name in dll_names:
@@ -108,6 +114,8 @@ class ScreenReaderAnnouncer:
         return None
 
     def _load_client_dlls(self):
+        if sys.platform != "win32":
+            return
         # 1. NVDA Controller Client (64-bit / 32-bit)
         nvda_candidates = (
             ["nvdaControllerClient64.dll", "nvdaControllerClient.dll", "nvdaControllerClient32.dll"]
@@ -394,6 +402,8 @@ class ScreenReaderAnnouncer:
             return
 
         def _beep_worker():
+            if winsound is None:
+                return
             try:
                 if sound_type == "success":
                     winsound.Beep(880, 100)

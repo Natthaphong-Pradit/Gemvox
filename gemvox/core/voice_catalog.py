@@ -105,6 +105,11 @@ SUPPORTED_MODELS: List[Dict[str, str]] = [
         "name": "Gemini 3.8 Flash-Lite TTS (Fast & High Throughput)",
         "description": "Optimized for ultra-low latency and high-throughput conversational speech (auto-fallbacks if unavailable on tier)."
     },
+    {
+        "id": "gemini-2.0-flash",
+        "name": "Gemini 2.0 Flash (Audio Modality Fallback)",
+        "description": "Multimodal audio generation supported universally across all Gemini Developer API tiers."
+    },
 ]
 
 def get_all_style_presets() -> List[Dict[str, str]]:

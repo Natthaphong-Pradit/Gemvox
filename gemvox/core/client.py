@@ -30,7 +30,20 @@ class GeminiClientManager:
             )
 
         if self._client is None or self._current_key != key:
-            self._client = genai.Client(api_key=key)
+            # Crucial: Gemini TTS and audio modalities require v1beta endpoints.
+            # Default v1 endpoint rejects 'speechConfig' under generation_config.
+            import os
+            os.environ["GOOGLE_GENAI_API_VERSION"] = "v1beta"
+            try:
+                from google.genai import types
+                http_opts = types.HttpOptions(api_version="v1beta")
+            except Exception:
+                http_opts = {"api_version": "v1beta"}
+
+            try:
+                self._client = genai.Client(api_key=key, http_options=http_opts)
+            except Exception:
+                self._client = genai.Client(api_key=key)
             self._current_key = key
 
         return self._client
@@ -44,7 +57,18 @@ class GeminiClientManager:
         if not test_key:
             return False, "API key is empty."
         try:
-            temp_client = genai.Client(api_key=test_key)
+            import os
+            os.environ["GOOGLE_GENAI_API_VERSION"] = "v1beta"
+            try:
+                from google.genai import types
+                http_opts = types.HttpOptions(api_version="v1beta")
+            except Exception:
+                http_opts = {"api_version": "v1beta"}
+
+            try:
+                temp_client = genai.Client(api_key=test_key, http_options=http_opts)
+            except Exception:
+                temp_client = genai.Client(api_key=test_key)
             # Perform a lightweight call to test authorization
             temp_client.models.list(page_size=1)
             return True, "API key is valid and connected to Gemini API successfully."

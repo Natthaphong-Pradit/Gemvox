@@ -21,7 +21,12 @@ except ImportError:
             if not key:
                 raise ValueError("Gemini API key is not set. Please configure your API key in Settings.")
             if self._client is None or self._current_key != key:
-                self._client = genai.Client(api_key=key)
+                import os
+                os.environ["GOOGLE_GENAI_API_VERSION"] = "v1beta"
+                try:
+                    self._client = genai.Client(api_key=key, http_options={"api_version": "v1beta"})
+                except Exception:
+                    self._client = genai.Client(api_key=key)
                 self._current_key = key
             return self._client
 
@@ -34,7 +39,12 @@ except ImportError:
             if not test_key:
                 return False, "API key is empty."
             try:
-                temp_client = genai.Client(api_key=test_key)
+                import os
+                os.environ["GOOGLE_GENAI_API_VERSION"] = "v1beta"
+                try:
+                    temp_client = genai.Client(api_key=test_key, http_options={"api_version": "v1beta"})
+                except Exception:
+                    temp_client = genai.Client(api_key=test_key)
                 temp_client.models.list(page_size=1)
                 return True, "API key is valid."
             except Exception as e:

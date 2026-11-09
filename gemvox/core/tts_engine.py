@@ -21,13 +21,14 @@ from gemvox.core.voice_catalog import (
     get_custom_voice_record,
 )
 
-# Priority order of fallback TTS models when a model returns 404 Not Found
+# Priority order of fallback TTS models when a model returns 404 or unsupported
 FALLBACK_TTS_MODELS: List[str] = [
     "gemini-2.5-flash-preview-tts",
     "gemini-3.1-flash-tts-preview",
     "gemini-2.5-pro-preview-tts",
     "gemini-3.8-flash-lite-tts",
     "gemini-3.8-flash-tts",
+    "gemini-2.0-flash",
 ]
 
 PREBUILT_VOICE_NAMES = {v.id.lower(): v.id for v in PREBUILT_VOICES}
@@ -152,15 +153,34 @@ class TTSEngine:
         except Exception:
             return 0.0
 
-    def _is_not_found_error(self, exc: Exception) -> bool:
+    def _is_fallback_error(self, exc: Exception) -> bool:
+        """
+        Check if an error indicates model absence, lack of speechConfig support,
+        or deprecated endpoint/parameter that should trigger candidate model fallback.
+        """
         msg = str(exc).lower()
+        # Fatal authentication, safety or user quota issues should NOT fall back
+        if "api_key_invalid" in msg or "permission_denied" in msg or "quota" in msg or "resource_exhausted" in msg:
+            return False
+
         return (
             "404" in msg
             or "not_found" in msg
             or "not found" in msg
             or "is not supported for" in msg
             or "does not exist" in msg
+            or "speechconfig" in msg
+            or "speech_config" in msg
+            or "cannot find field" in msg
+            or "unknown name" in msg
+            or "invalid json payload" in msg
+            or "invalid_argument" in msg
+            or "unsupported" in msg
+            or "badrequest" in msg
         )
+
+    def _is_not_found_error(self, exc: Exception) -> bool:
+        return self._is_fallback_error(exc)
 
     def _discover_available_tts_models(self, client: Any) -> List[str]:
         """Query client.models.list() once per session to find TTS models enabled for this API key."""
@@ -261,16 +281,35 @@ class TTSEngine:
         else:
             prompt_text = text.strip()
 
-        gen_config = {
-            "response_modalities": ["AUDIO"],
-            "speech_config": {
-                "voice_config": {
-                    "prebuilt_voice_config": {
-                        "voice_name": target_voice
+        gen_config = None
+        try:
+            from google.genai import types
+            gen_config = types.GenerateContentConfig(
+                http_options=types.HttpOptions(api_version="v1beta"),
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=target_voice
+                        )
+                    )
+                )
+            )
+        except Exception:
+            pass
+
+        if gen_config is None:
+            gen_config = {
+                "http_options": {"api_version": "v1beta"},
+                "response_modalities": ["AUDIO"],
+                "speech_config": {
+                    "voice_config": {
+                        "prebuilt_voice_config": {
+                            "voice_name": target_voice
+                        }
                     }
                 }
             }
-        }
 
         response = client.models.generate_content(
             model=model,
@@ -460,10 +499,7 @@ class TTSEngine:
             input=input_payload,
             response_format={"type": "audio"},
             generation_config={
-                "speech_config": {
-                    "mode": "conversational",
-                    "speakers": speakers_config
-                }
+                "speech_config": speakers_config
             }
         )
 
@@ -544,14 +580,42 @@ class TTSEngine:
                     }
                 })
 
-            gen_config = {
-                "response_modalities": ["AUDIO"],
-                "speech_config": {
-                    "multi_speaker_voice_config": {
-                        "speaker_voice_configs": speaker_configs
+            gen_config = None
+            try:
+                from google.genai import types
+                typed_speakers = [
+                    types.SpeakerVoiceConfig(
+                        speaker=sc["speaker"],
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=sc["voice_config"]["prebuilt_voice_config"]["voice_name"]
+                            )
+                        )
+                    )
+                    for sc in speaker_configs
+                ]
+                gen_config = types.GenerateContentConfig(
+                    http_options=types.HttpOptions(api_version="v1beta"),
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        multi_speaker_voice_config=types.MultiSpeakerVoiceConfig(
+                            speaker_voice_configs=typed_speakers
+                        )
+                    )
+                )
+            except Exception:
+                pass
+
+            if gen_config is None:
+                gen_config = {
+                    "http_options": {"api_version": "v1beta"},
+                    "response_modalities": ["AUDIO"],
+                    "speech_config": {
+                        "multi_speaker_voice_config": {
+                            "speaker_voice_configs": speaker_configs
+                        }
                     }
                 }
-            }
 
             response = client.models.generate_content(
                 model=model,

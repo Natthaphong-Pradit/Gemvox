@@ -33,12 +33,13 @@ Accessible Multi-Speaker AI Voice Studio powered by Google Gemini
 ====================================================================
 
 WHAT'S NEW IN v{VERSION}:
-- Fix 404 Model Not Found & Automatic Multi-Model Fallback:
-  Resolves the "Model 'gemini-3.8-flash-tts' not found (404)" error on
-  standard Google AI Studio API keys by defaulting to Universal AI Studio
-  models (gemini-2.5-flash-preview-tts) and automatically falling back
-  across Gemini 2.5 Flash TTS, 2.5 Pro TTS, 3.1 Flash TTS, and 3.8 TTS,
-  with automatic raw PCM-to-WAV RIFF wrapping.
+- Fix 400 INVALID_ARGUMENT (Unknown name "speechConfig" at 'generation_config'):
+  Resolves the Google AI Studio REST rejection by forcing the v1beta endpoint
+  and typed GenerateContentConfig across single-speaker and multi-speaker synthesis.
+- Automatic Multi-Model Fallback & 404 Resilience:
+  Defaults to Universal AI Studio model (gemini-2.5-flash-preview-tts) with
+  automatic fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash,
+  and 2.0 Flash models, with seamless raw PCM-to-WAV RIFF wrapping.
 - Studio Audio Player & Transport Deck Redesign:
   Full non-blocking studio transport controls across Single-Speaker,
   Multi-Speaker, Voice Design, and Recent Generations History (Ctrl+H):
