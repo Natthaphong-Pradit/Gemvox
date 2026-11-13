@@ -1,3 +1,4 @@
+import array
 import base64
 import io
 import os
@@ -32,6 +33,7 @@ FALLBACK_TTS_MODELS: List[str] = [
 ]
 
 PREBUILT_VOICE_NAMES = {v.id.lower(): v.id for v in PREBUILT_VOICES}
+MAX_TTS_CHUNK_CHARS = 1800
 
 
 class TTSEngine:
@@ -369,6 +371,183 @@ class TTSEngine:
         raw_audio = self._decode_inline_audio(interaction.output_audio.data)
         return self._ensure_wav_bytes(raw_audio)
 
+    def _split_text_for_tts(self, text: str, max_chars: int = MAX_TTS_CHUNK_CHARS) -> List[str]:
+        """
+        Split long text into natural chunks (<= max_chars) at paragraph, sentence,
+        or word boundaries without breaking inline vocal tags <...>.
+        Prevents autoregressive audio quality degradation on 5+ minute long-form texts.
+        """
+        raw = text.strip()
+        if not raw:
+            return []
+        if len(raw) <= max_chars:
+            return [raw]
+
+        def _avoid_tag_split(s: str, pos: int) -> int:
+            last_open = s.rfind("<", 0, pos)
+            if last_open != -1:
+                last_close = s.rfind(">", 0, pos)
+                if last_close < last_open and last_open > 0:
+                    return last_open
+            return pos
+
+        def _split_long_segment(seg: str) -> List[str]:
+            parts: List[str] = []
+            rem = seg.strip()
+            while len(rem) > max_chars:
+                # Prefer whitespace split in the latter half of the window
+                cut = rem.rfind(" ", max_chars // 2, max_chars + 1)
+                if cut <= 0:
+                    cut = rem.rfind("\t", max_chars // 2, max_chars + 1)
+                if cut <= 0:
+                    cut = max_chars
+                cut = _avoid_tag_split(rem, cut)
+                if cut <= 0:
+                    cut = max_chars
+                head = rem[:cut].strip()
+                if head:
+                    parts.append(head)
+                rem = rem[cut:].strip()
+            if rem:
+                parts.append(rem)
+            return parts
+
+        # 1. Split into paragraphs first, then sentences if a paragraph is too long
+        units: List[str] = []
+        for para in re.split(r"\n+", raw):
+            p = para.strip()
+            if not p:
+                continue
+            if len(p) <= max_chars:
+                units.append(p)
+            else:
+                sentences = [s.strip() for s in re.split(r"(?<=[.!?。！？])\s+", p) if s.strip()]
+                for sent in sentences:
+                    if len(sent) <= max_chars:
+                        units.append(sent)
+                    else:
+                        units.extend(_split_long_segment(sent))
+
+        # 2. Pack units into chunks up to max_chars
+        chunks: List[str] = []
+        current = ""
+        for u in units:
+            if not current:
+                current = u
+            elif len(current) + 1 + len(u) <= max_chars:
+                current = f"{current} {u}"
+            else:
+                chunks.append(current)
+                current = u
+        if current:
+            chunks.append(current)
+
+        return chunks or [raw]
+
+    def _apply_pcm_edge_fade(
+        self,
+        pcm: bytes,
+        sample_rate: int,
+        channels: int,
+        sampwidth: int,
+        fade_ms: float = 5.0,
+    ) -> bytes:
+        """Apply a short 5ms fade-in/out on 16-bit PCM edges to eliminate stitch clicks."""
+        if not pcm or sampwidth != 2:
+            return pcm
+        ch = max(1, channels)
+        total_frames = len(pcm) // (ch * 2)
+        fade_frames = min(total_frames // 2, max(1, int(sample_rate * fade_ms / 1000.0)))
+        if fade_frames <= 1:
+            return pcm
+
+        samples = array.array("h")
+        samples.frombytes(pcm)
+        for i in range(fade_frames):
+            gain_in = i / float(fade_frames)
+            gain_out = (fade_frames - 1 - i) / float(fade_frames)
+            in_base = i * ch
+            out_base = (total_frames - fade_frames + i) * ch
+            for c in range(ch):
+                samples[in_base + c] = int(samples[in_base + c] * gain_in)
+                samples[out_base + c] = int(samples[out_base + c] * gain_out)
+        return samples.tobytes()
+
+    def _stitch_wav_chunks(self, wav_chunks: List[bytes], pause_sec: float = 0.16) -> bytes:
+        """Seamlessly stitch multiple WAV chunks into a single RIFF WAV with micro-fades."""
+        if not wav_chunks:
+            return b""
+        if len(wav_chunks) == 1:
+            return wav_chunks[0]
+
+        combined_pcm = bytearray()
+        sample_rate = 24000
+        channels = 1
+        sampwidth = 2
+
+        for idx, chunk_wav in enumerate(wav_chunks):
+            pcm, sr, ch, sw = self._extract_pcm_frames(chunk_wav)
+            if not pcm:
+                continue
+            if idx == 0:
+                sample_rate, channels, sampwidth = sr, ch, sw
+            faded = self._apply_pcm_edge_fade(pcm, sr, ch, sw)
+            if combined_pcm and pause_sec > 0:
+                pause_bytes = b"\x00" * int(sample_rate * channels * sampwidth * pause_sec)
+                combined_pcm.extend(pause_bytes)
+            combined_pcm.extend(faded)
+
+        return self._ensure_wav_bytes(
+            bytes(combined_pcm),
+            sample_rate=sample_rate,
+            channels=channels,
+            sampwidth=sampwidth,
+        )
+
+    def _synthesize_single_chunk_with_candidates(
+        self,
+        client: Any,
+        candidates: List[str],
+        text: str,
+        voice: str,
+        style: Optional[str],
+    ) -> Tuple[bytes, str, Optional[Exception]]:
+        """Try synthesizing one single-speaker chunk across candidate models."""
+        last_error: Optional[Exception] = None
+        for cand_model in candidates:
+            if "3.8" in cand_model and hasattr(client, "interactions") and cand_model not in self._unavailable_interactions_models:
+                try:
+                    wav_bytes = self._synthesize_single_via_interactions(
+                        client=client,
+                        model=cand_model,
+                        text=text,
+                        voice=voice,
+                        style=style,
+                    )
+                    if wav_bytes:
+                        return wav_bytes, cand_model, None
+                except Exception as e_inter:
+                    last_error = e_inter
+                    self._unavailable_interactions_models.add(cand_model)
+
+            try:
+                wav_bytes = self._synthesize_single_via_generate_content(
+                    client=client,
+                    model=cand_model,
+                    text=text,
+                    voice=voice,
+                    style=style,
+                )
+                if wav_bytes:
+                    return wav_bytes, cand_model, None
+            except Exception as e_gen:
+                last_error = e_gen
+                if self._is_not_found_error(e_gen):
+                    self._unavailable_models.add(cand_model)
+                    continue
+                break
+        return b"", "", last_error
+
     def synthesize_single_speaker(
         self,
         text: str,
@@ -378,7 +557,9 @@ class TTSEngine:
         output_filepath: Optional[str] = None
     ) -> Tuple[bytes, str, float]:
         """
-        Synthesizes single-speaker audio with automatic endpoint and model fallback if 404 occurs.
+        Synthesizes single-speaker audio with automatic endpoint/model fallback and
+        automatic long-text chunking + seamless PCM stitching to prevent quality drop
+        on long-form paragraphs (5+ minutes).
         Returns: (wav_bytes, saved_filepath, duration_seconds)
         """
         if not text or not text.strip():
@@ -391,51 +572,32 @@ class TTSEngine:
 
         start_time = time.time()
         candidates = self._get_candidate_models(model, client)
-        last_error: Optional[Exception] = None
-        wav_bytes: bytes = b""
+        chunks = self._split_text_for_tts(text)
+
+        wav_chunks: List[bytes] = []
         used_model = model
+        last_error: Optional[Exception] = None
 
-        for cand_model in candidates:
-            # 1. If Gemini 3.8 model and interactions API not marked unavailable, try interactions first
-            if "3.8" in cand_model and hasattr(client, "interactions") and cand_model not in self._unavailable_interactions_models:
-                try:
-                    wav_bytes = self._synthesize_single_via_interactions(
-                        client=client,
-                        model=cand_model,
-                        text=text,
-                        voice=voice,
-                        style=style
-                    )
-                    if wav_bytes:
-                        used_model = cand_model
-                        break
-                except Exception as e_inter:
-                    last_error = e_inter
-                    self._unavailable_interactions_models.add(cand_model)
-                    if not self._is_not_found_error(e_inter):
-                        # Still try generate_content before giving up on this model
-                        pass
+        for idx, chunk_text in enumerate(chunks):
+            chunk_candidates = candidates if idx == 0 else (
+                [used_model] + [m for m in candidates if m != used_model]
+            )
+            chunk_wav, chunk_model, err = self._synthesize_single_chunk_with_candidates(
+                client=client,
+                candidates=chunk_candidates,
+                text=chunk_text,
+                voice=voice,
+                style=style,
+            )
+            if not chunk_wav:
+                last_error = err
+                wav_chunks = []
+                break
+            if idx == 0:
+                used_model = chunk_model
+            wav_chunks.append(chunk_wav)
 
-            # 2. Try standard client.models.generate_content (universal across 2.5, 3.1, and 3.8)
-            try:
-                wav_bytes = self._synthesize_single_via_generate_content(
-                    client=client,
-                    model=cand_model,
-                    text=text,
-                    voice=voice,
-                    style=style
-                )
-                if wav_bytes:
-                    used_model = cand_model
-                    break
-            except Exception as e_gen:
-                last_error = e_gen
-                if self._is_not_found_error(e_gen):
-                    self._unavailable_models.add(cand_model)
-                    continue
-                else:
-                    # Non-404 error (e.g. quota, invalid key, safety): stop and report immediately
-                    break
+        wav_bytes = self._stitch_wav_chunks(wav_chunks, pause_sec=0.16) if wav_chunks else b""
 
         if not wav_bytes:
             announcer.play_sound("error")
@@ -540,16 +702,57 @@ class TTSEngine:
             voice = speaker_voice_map.get(spk, "Kore")
             combined_text = " ".join(t["text"].strip() for t in valid_turns)
             first_style = next((t.get("style", "").strip() for t in valid_turns if t.get("style", "").strip()), None)
-            return self._synthesize_single_via_generate_content(
-                client=client,
-                model=model,
-                text=combined_text,
-                voice=voice,
-                style=first_style
-            )
+            sub_chunks = self._split_text_for_tts(combined_text)
+            if len(sub_chunks) == 1:
+                return self._synthesize_single_via_generate_content(
+                    client=client,
+                    model=model,
+                    text=combined_text,
+                    voice=voice,
+                    style=first_style
+                )
+            wav_parts = [
+                self._synthesize_single_via_generate_content(
+                    client=client,
+                    model=model,
+                    text=part_txt,
+                    voice=voice,
+                    style=first_style
+                )
+                for part_txt in sub_chunks
+            ]
+            return self._stitch_wav_chunks(wav_parts, pause_sec=0.16)
 
-        # Case 2: 2 speakers (or try native multi_speaker_voice_config first)
+        # Case 2: 2 speakers (batch long scripts into <= MAX_TTS_CHUNK_CHARS segments to prevent quality drop)
         if len(unique_speakers) == 2:
+            total_chars = sum(len(t.get("text", "").strip()) for t in valid_turns)
+            if total_chars > MAX_TTS_CHUNK_CHARS and len(valid_turns) > 1:
+                batches: List[List[Dict[str, str]]] = []
+                cur_batch: List[Dict[str, str]] = []
+                cur_len = 0
+                for t in valid_turns:
+                    t_len = len(t.get("text", "").strip())
+                    if cur_batch and cur_len + t_len > MAX_TTS_CHUNK_CHARS:
+                        batches.append(cur_batch)
+                        cur_batch = [t]
+                        cur_len = t_len
+                    else:
+                        cur_batch.append(t)
+                        cur_len += t_len
+                if cur_batch:
+                    batches.append(cur_batch)
+
+                if len(batches) > 1:
+                    wav_parts = [
+                        self._synthesize_multi_via_generate_content(
+                            client=client,
+                            model=model,
+                            turns=batch,
+                            speaker_voice_map=speaker_voice_map,
+                        )
+                        for batch in batches
+                    ]
+                    return self._stitch_wav_chunks(wav_parts, pause_sec=0.14)
             dialogue_lines = []
             style_hints = []
             for t in valid_turns:
@@ -648,17 +851,19 @@ class TTSEngine:
             sty = t.get("style", "").strip() or None
             voice = speaker_voice_map.get(spk, "Kore")
 
-            turn_wav = self._synthesize_single_via_generate_content(
-                client=client,
-                model=model,
-                text=txt,
-                voice=voice,
-                style=sty
-            )
-            pcm_frames, sample_rate, channels, sampwidth = self._extract_pcm_frames(turn_wav)
-            if idx > 0 and combined_pcm:
-                combined_pcm.extend(pause_bytes)
-            combined_pcm.extend(pcm_frames)
+            for sub_txt in self._split_text_for_tts(txt):
+                turn_wav = self._synthesize_single_via_generate_content(
+                    client=client,
+                    model=model,
+                    text=sub_txt,
+                    voice=voice,
+                    style=sty
+                )
+                pcm_frames, sample_rate, channels, sampwidth = self._extract_pcm_frames(turn_wav)
+                pcm_frames = self._apply_pcm_edge_fade(pcm_frames, sample_rate, channels, sampwidth)
+                if combined_pcm:
+                    combined_pcm.extend(pause_bytes)
+                combined_pcm.extend(pcm_frames)
 
         if not combined_pcm:
             raise RuntimeError("Model did not return dialogue audio.")

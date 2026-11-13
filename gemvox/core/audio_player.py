@@ -211,52 +211,119 @@ class AudioPlayer:
                 return True
         return False
 
-    def _transform_pcm_chunk(self, chunk: bytes, width: int, channels: int, volume: int, speed: float) -> bytes:
-        """Apply real-time digital volume scaling and playback speed resampling to a 16-bit PCM chunk."""
-        if not chunk:
-            return chunk
-        if width != 2:
-            return chunk
+    def _transform_pcm_chunk(
+        self,
+        chunk: bytes,
+        width: int,
+        channels: int,
+        volume: int,
+        speed: float,
+        phase: float = 0.0,
+        next_frame_bytes: bytes = b"",
+    ) -> tuple[bytes, float]:
+        """
+        Apply real-time digital volume scaling and continuous-phase linear-interpolated
+        playback speed resampling to a 16-bit PCM chunk without boundary clicks.
+        """
+        if not chunk or width != 2:
+            return chunk, 0.0
 
         vol_scale = volume / 100.0
-        if abs(vol_scale - 1.0) < 1e-3 and abs(speed - 1.0) < 1e-3:
-            return chunk
+        speed_active = abs(speed - 1.0) >= 1e-3
+        vol_active = abs(vol_scale - 1.0) >= 1e-3
+
+        if not speed_active and not vol_active:
+            return chunk, 0.0
 
         samples = array.array('h')
         samples.frombytes(chunk)
         n_samples = len(samples)
         if n_samples == 0:
-            return chunk
+            return chunk, 0.0
 
-        # 1. Speed resampling (preserving channel alignment)
-        if abs(speed - 1.0) >= 1e-3:
-            in_frames = n_samples // max(1, channels)
-            out_frames = max(1, int(in_frames / speed))
-            if channels == 1:
-                resampled = array.array(
-                    'h',
-                    (samples[min(in_frames - 1, int(i * speed))] for i in range(out_frames))
-                )
-            else:
-                resampled = array.array('h')
-                for i in range(out_frames):
-                    src_f = min(in_frames - 1, int(i * speed))
-                    base = src_f * channels
-                    for c in range(channels):
-                        resampled.append(samples[base + c])
-            samples = resampled
+        ch = max(1, channels)
+        in_frames = n_samples // ch
+        if in_frames == 0:
+            return chunk, 0.0
 
-        # 2. Volume scaling
+        # Fast-path mute
         if volume == 0:
-            return b"\x00" * (len(samples) * 2)
-        if abs(vol_scale - 1.0) >= 1e-3:
-            scaled = array.array(
-                'h',
-                (max(-32768, min(32767, int(s * vol_scale))) for s in samples)
-            )
-            samples = scaled
+            if not speed_active:
+                return b"\x00" * len(chunk), 0.0
+            pos = max(0.0, phase)
+            out_frames = 0
+            while pos < in_frames:
+                out_frames += 1
+                pos += speed
+            return b"\x00" * (out_frames * ch * 2), pos - in_frames
 
-        return samples.tobytes()
+        if speed_active:
+            # Append one lookahead frame (from next chunk or duplicate last frame) for seamless interpolation
+            if next_frame_bytes and len(next_frame_bytes) >= ch * 2:
+                samples.frombytes(next_frame_bytes[: ch * 2])
+            else:
+                last_base = (in_frames - 1) * ch
+                for c in range(ch):
+                    samples.append(samples[last_base + c])
+
+            pos = max(0.0, phase)
+            out = array.array('h')
+            if ch == 1:
+                while pos < in_frames:
+                    idx = int(pos)
+                    frac = pos - idx
+                    s0 = samples[idx]
+                    s1 = samples[idx + 1]
+                    val = s0 + frac * (s1 - s0)
+                    if vol_active:
+                        val *= vol_scale
+                    ival = int(val)
+                    if ival > 32767:
+                        ival = 32767
+                    elif ival < -32768:
+                        ival = -32768
+                    out.append(ival)
+                    pos += speed
+            else:
+                while pos < in_frames:
+                    idx = int(pos)
+                    frac = pos - idx
+                    base0 = idx * ch
+                    base1 = base0 + ch
+                    for c in range(ch):
+                        s0 = samples[base0 + c]
+                        s1 = samples[base1 + c]
+                        val = s0 + frac * (s1 - s0)
+                        if vol_active:
+                            val *= vol_scale
+                        ival = int(val)
+                        if ival > 32767:
+                            ival = 32767
+                        elif ival < -32768:
+                            ival = -32768
+                        out.append(ival)
+                    pos += speed
+            return out.tobytes(), pos - in_frames
+
+        # Volume scaling only (speed == 1.0)
+        scaled = array.array(
+            'h',
+            (max(-32768, min(32767, int(s * vol_scale))) for s in samples)
+        )
+        return scaled.tobytes(), 0.0
+
+    def _open_output_stream(self, rate: int, channels: int, dtype: str):
+        """Open sounddevice RawOutputStream with high-latency buffering for glitch-free long playback."""
+        try:
+            return sd.RawOutputStream(
+                samplerate=rate,
+                channels=channels,
+                dtype=dtype,
+                blocksize=2048,
+                latency="high",
+            )
+        except Exception:
+            return sd.RawOutputStream(samplerate=rate, channels=channels, dtype=dtype)
 
     def play_wav_bytes(self, wav_bytes: bytes, announce_on_start: bool = True, start_sec: float = 0.0):
         """Play WAV audio directly from bytes in memory without blocking the UI thread."""
@@ -301,10 +368,12 @@ class AudioPlayer:
                 try:
                     dtype_map = {1: 'int8', 2: 'int16', 4: 'int32'}
                     dtype = dtype_map.get(width, 'int16')
-                    frames_per_chunk = 1024  # ~42ms per chunk at 24kHz for instant responsiveness
+                    frames_per_chunk = 4096  # ~170ms at 24kHz for glitch-free long playback
                     last_ui_notify = 0.0
+                    resample_phase = 0.0
+                    expected_frame = None
 
-                    with sd.RawOutputStream(samplerate=rate, channels=channels, dtype=dtype) as stream:
+                    with self._open_output_stream(rate, channels, dtype) as stream:
                         with self._lock:
                             self._active_stream = stream
 
@@ -324,26 +393,49 @@ class AudioPlayer:
                                 if loop_en and total_frames > 0:
                                     with self._lock:
                                         self._current_frame = 0
+                                    resample_phase = 0.0
+                                    expected_frame = 0
                                     self._notify_transport()
                                     continue
                                 else:
                                     break
 
+                            # Reset resampling phase if seek() jumped the playback position
+                            if expected_frame is not None and cur_frame != expected_frame:
+                                resample_phase = 0.0
+
                             end_frame = min(total_frames, cur_frame + frames_per_chunk)
                             byte_start = cur_frame * frame_bytes
                             byte_end = end_frame * frame_bytes
                             chunk = raw_data[byte_start:byte_end]
+                            next_frame_bytes = (
+                                raw_data[byte_end : byte_end + frame_bytes]
+                                if end_frame < total_frames
+                                else b""
+                            )
 
-                            out_chunk = self._transform_pcm_chunk(chunk, width, channels, vol, spd)
-                            stream.write(out_chunk)
+                            out_chunk, resample_phase = self._transform_pcm_chunk(
+                                chunk,
+                                width,
+                                channels,
+                                vol,
+                                spd,
+                                phase=resample_phase,
+                                next_frame_bytes=next_frame_bytes,
+                            )
+                            if out_chunk:
+                                stream.write(out_chunk)
 
                             with self._lock:
                                 # Only advance if seek() didn't jump _current_frame during write
                                 if self._current_frame == cur_frame:
                                     self._current_frame = end_frame
+                                    expected_frame = end_frame
+                                else:
+                                    expected_frame = None
 
                             now = time.time()
-                            if now - last_ui_notify >= 0.08:
+                            if now - last_ui_notify >= 0.25:
                                 last_ui_notify = now
                                 self._notify_transport()
 

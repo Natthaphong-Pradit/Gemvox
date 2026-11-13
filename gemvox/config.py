@@ -64,6 +64,7 @@ DEFAULT_CONFIG = {
     "player_volume": 100,
     "player_speed": 1.0,
     "player_loop": False,
+    "auto_check_updates": True,
     "custom_voices": [],
     "custom_styles": []
 }

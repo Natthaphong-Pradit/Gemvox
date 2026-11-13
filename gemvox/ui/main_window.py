@@ -1,10 +1,12 @@
 from pathlib import Path
+import threading
 import wx
 from gemvox import VERSION
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.audio_player import audio_player
+from gemvox.core.updater import check_for_updates
 from gemvox.ui.single_speaker_panel import SingleSpeakerPanel
 from gemvox.ui.multi_speaker_panel import MultiSpeakerPanel
 from gemvox.ui.voice_design_panel import VoiceDesignPanel
@@ -68,11 +70,14 @@ class MainWindow(wx.Frame):
 
         # Initial voice announcement
         announcer.announce(tr("app_opened_announce", version=VERSION))
+        self._startup_update_checked = False
 
         # If this is the very first launch (no API key and tour not completed yet),
         # automatically launch the guided Welcome Tour after the main window renders.
         if config.is_first_run:
             wx.CallAfter(self._show_first_run_welcome_tour)
+        elif config.get("auto_check_updates", True):
+            wx.CallAfter(self._start_startup_update_check)
 
     def _show_first_run_welcome_tour(self):
         dlg = WelcomeTourDialog(self)
@@ -81,6 +86,34 @@ class MainWindow(wx.Frame):
         if res == WelcomeTourDialog.ID_GO_SETTINGS:
             self.switch_tab(5)
             self.focus_tab_primary_control(5)
+        if config.get("auto_check_updates", True) and not self._startup_update_checked:
+            self._start_startup_update_check()
+
+    def _start_startup_update_check(self):
+        """Silently check GitHub for updates on startup; show UpdateDialog only if a newer version exists."""
+        if self._startup_update_checked:
+            return
+        self._startup_update_checked = True
+
+        def _worker():
+            try:
+                info = check_for_updates()
+            except Exception:
+                return
+            if wx.GetApp():
+                wx.CallAfter(self._on_startup_update_check_done, info)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_startup_update_check_done(self, info):
+        if not self or self.IsBeingDeleted():
+            return
+        if not info or info.error or not info.is_newer:
+            return
+        dlg = UpdateDialog(self, initial_info=info)
+        dlg.ShowModal()
+        if dlg:
+            dlg.Destroy()
 
     def _init_menu(self):
         menu_bar = wx.MenuBar()

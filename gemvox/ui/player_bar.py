@@ -40,6 +40,14 @@ class AudioTransportBar:
         self.resume_label_key = resume_label_key
         self._has_local_audio = False
         self._updating_ui = False
+        self._last_state: Optional[str] = None
+        self._last_play_enabled: Optional[bool] = None
+        self._last_stop_enabled: Optional[bool] = None
+        self._last_has_timeline: Optional[bool] = None
+        self._last_pos_val: Optional[int] = None
+        self._last_time_text: Optional[str] = None
+        self._last_vol: Optional[int] = None
+        self._last_loop: Optional[bool] = None
 
         self.box = wx.StaticBox(parent, label=tr("player_box_title"))
         style_staticbox(self.box)
@@ -225,26 +233,35 @@ class AudioTransportBar:
                     return
                 self._updating_ui = True
                 try:
-                    if state == "playing":
-                        self.btn_play.SetLabel(tr(self.pause_label_key))
-                        style_button(self.btn_play, "gold")
-                        self.btn_play.Enable(True)
-                        self.btn_stop.Enable(True)
-                    elif state == "paused":
-                        self.btn_play.SetLabel(tr(self.resume_label_key))
-                        style_button(self.btn_play, "success")
-                        self.btn_play.Enable(True)
-                        self.btn_stop.Enable(True)
-                    else:
-                        self.btn_play.SetLabel(tr(self.play_label_key))
-                        style_button(self.btn_play, "success")
-                        self.btn_play.Enable(self._has_local_audio or audio_player.has_audio)
-                        self.btn_stop.Enable(False)
+                    play_enabled = True if state in ("playing", "paused") else (self._has_local_audio or audio_player.has_audio)
+                    stop_enabled = state in ("playing", "paused")
+
+                    if state != self._last_state:
+                        self._last_state = state
+                        if state == "playing":
+                            self.btn_play.SetLabel(tr(self.pause_label_key))
+                            style_button(self.btn_play, "gold")
+                        elif state == "paused":
+                            self.btn_play.SetLabel(tr(self.resume_label_key))
+                            style_button(self.btn_play, "success")
+                        else:
+                            self.btn_play.SetLabel(tr(self.play_label_key))
+                            style_button(self.btn_play, "success")
+
+                    if play_enabled != self._last_play_enabled:
+                        self._last_play_enabled = play_enabled
+                        self.btn_play.Enable(play_enabled)
+
+                    if stop_enabled != self._last_stop_enabled:
+                        self._last_stop_enabled = stop_enabled
+                        self.btn_stop.Enable(stop_enabled)
 
                     has_timeline = (tot_sec > 0) or self._has_local_audio
-                    self.btn_rew.Enable(has_timeline)
-                    self.btn_ff.Enable(has_timeline)
-                    self.slider_seek.Enable(has_timeline)
+                    if has_timeline != self._last_has_timeline:
+                        self._last_has_timeline = has_timeline
+                        self.btn_rew.Enable(has_timeline)
+                        self.btn_ff.Enable(has_timeline)
+                        self.slider_seek.Enable(has_timeline)
 
                     if tot_sec > 0:
                         pos_val = int(round((cur_sec / tot_sec) * 1000))
@@ -252,19 +269,28 @@ class AudioTransportBar:
                     else:
                         pos_val = 0
 
-                    if wx.Window.FindFocus() != self.slider_seek:
+                    if pos_val != self._last_pos_val and wx.Window.FindFocus() != self.slider_seek:
+                        self._last_pos_val = pos_val
                         self.slider_seek.SetValue(pos_val)
 
-                    self.lbl_time.SetLabel(f"{format_mm_ss(cur_sec)} / {format_mm_ss(tot_sec)}")
+                    time_text = f"{format_mm_ss(cur_sec)} / {format_mm_ss(tot_sec)}"
+                    if time_text != self._last_time_text:
+                        self._last_time_text = time_text
+                        self.lbl_time.SetLabel(time_text)
 
                     vol = audio_player.volume
-                    if self.slider_vol.GetValue() != vol:
-                        self.slider_vol.SetValue(vol)
-                    self.lbl_vol.SetLabel(tr("lbl_player_volume", vol=vol))
+                    if vol != self._last_vol:
+                        self._last_vol = vol
+                        if self.slider_vol.GetValue() != vol:
+                            self.slider_vol.SetValue(vol)
+                        self.lbl_vol.SetLabel(tr("lbl_player_volume", vol=vol))
 
                     self._sync_speed_selection(audio_player.speed)
-                    if self.chk_loop.GetValue() != audio_player.loop:
-                        self.chk_loop.SetValue(audio_player.loop)
+                    loop_val = audio_player.loop
+                    if loop_val != self._last_loop:
+                        self._last_loop = loop_val
+                        if self.chk_loop.GetValue() != loop_val:
+                            self.chk_loop.SetValue(loop_val)
                 finally:
                     self._updating_ui = False
             except RuntimeError:

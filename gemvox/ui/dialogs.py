@@ -624,7 +624,7 @@ class UpdateDialog(wx.Dialog):
     package (Standalone EXE, Portable ZIP, or Source Archive), and installs/relaunches
     Gemvox in place without requiring the user to manually extract files.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, initial_info: Optional[UpdateInfo] = None):
         super().__init__(
             parent,
             title=tr("dlg_update_title"),
@@ -636,7 +636,10 @@ class UpdateDialog(wx.Dialog):
         style_panel(self, accessible_name=tr("dlg_update_title"))
         self._init_ui()
         self.CentreOnParent()
-        wx.CallAfter(self.start_check)
+        if initial_info is not None:
+            wx.CallAfter(self._on_check_completed, initial_info)
+        else:
+            wx.CallAfter(self.start_check)
 
     def _init_ui(self):
         sizer = wx.BoxSizer(wx.VERTICAL)

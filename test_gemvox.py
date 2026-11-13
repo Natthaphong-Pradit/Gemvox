@@ -20,7 +20,7 @@ def print_result(label: str, ok: bool, details: str = ""):
 
 def main():
     print("=" * 65)
-    print(" GEMVOX v1.1.8 DIAGNOSTIC & ENVIRONMENT TEST")
+    print(" GEMVOX v1.1.9 DIAGNOSTIC & ENVIRONMENT TEST")
     print("=" * 65)
     all_ok = True
 
