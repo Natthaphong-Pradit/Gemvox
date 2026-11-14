@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag to upload assets to (e.g. v1.1.7)'
+        description: 'Release tag to upload assets to (e.g. v1.2.0)'
         required: false
-        default: 'v1.1.7'
+        default: 'v1.2.0'
 
 permissions:
   contents: write
@@ -32,9 +32,9 @@ jobs:
           python -m pip install --upgrade pip pyinstaller
           python -m pip install -r requirements.txt
 
-      - name: Verify Windows wxPython GUI & Audio Transport Bar Instantiation
+      - name: Verify Windows PySide6 GUI & Universal Design Accessibility Audit
         run: |
-          python -c "import wx; app = wx.App(False); from gemvox.config import config; from gemvox.ui.main_window import MainWindow; from gemvox.ui.dialogs import HelpDialog, InlineTagDialog, StylePresetDialog, CreateCustomStyleDialog, WelcomeTourDialog, GenerationHistoryDialog, UpdateDialog; config.set('first_run_completed', True); w = MainWindow(); [Dlg(w).Destroy() for Dlg in (HelpDialog, InlineTagDialog, StylePresetDialog, CreateCustomStyleDialog, WelcomeTourDialog, GenerationHistoryDialog)]; w.Destroy(); print('Windows wxPython GUI Smoke Test Passed!')"
+          python test_gemvox.py
 
       - name: Build Standalone EXE and Portable ZIP
         run: |

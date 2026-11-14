@@ -13,11 +13,17 @@ datas += collect_data_files('sounddevice')
 datas += collect_data_files('google.genai')
 
 hiddenimports = [
-    'wx',
+    'PySide6',
+    'PySide6.QtCore',
+    'PySide6.QtGui',
+    'PySide6.QtWidgets',
+    'shiboken6',
     'sounddevice',
     '_sounddevice_data',
     'win32com',
     'win32com.client',
+    'win32gui',
+    'win32con',
     'pythoncom',
     'dotenv',
     'websockets',
@@ -37,7 +43,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['pytest', 'tests', 'google.genai.tests'],
+    excludes=['pytest', 'tests', 'google.genai.tests', 'wx'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

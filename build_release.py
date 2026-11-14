@@ -33,22 +33,17 @@ Accessible Multi-Speaker AI Voice Studio powered by Google Gemini
 ====================================================================
 
 WHAT'S NEW IN v{VERSION}:
-- Fix 400 INVALID_ARGUMENT (Unknown name "speechConfig" at 'generation_config'):
-  Resolves the Google AI Studio REST rejection by forcing the v1beta endpoint
-  and typed GenerateContentConfig across single-speaker and multi-speaker synthesis.
-- Automatic Multi-Model Fallback & 404 Resilience:
-  Defaults to Universal AI Studio model (gemini-2.5-flash-preview-tts) with
-  automatic fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash,
-  and 2.0 Flash models, with seamless raw PCM-to-WAV RIFF wrapping.
-- Studio Audio Player & Transport Deck Redesign:
-  Full non-blocking studio transport controls across Single-Speaker,
-  Multi-Speaker, Voice Design, and Recent Generations History (Ctrl+H):
-  * Play / Pause / Resume toggle (Alt+P) & dedicated Stop (Alt+Q)
-  * Rewind 5 Seconds (-5s, F7) & Fast-Forward 5 Seconds (+5s, F8)
-  * Interactive Seek / Timeline Scrub Slider & MM:SS / MM:SS readout
-  * Volume Slider (0% - 100%, F9 Volume Down / F10 Volume Up)
-  * Playback Speed Selector (0.75x, 1.0x, 1.25x, 1.5x, 2.0x, Ctrl+Shift+P)
-  * Loop Playback toggle (Ctrl+L)
+- Universal Design Architecture (wxPython -> PySide6 Qt6):
+  Full migration to PySide6 with the Obsidian & Royal Gold 2.0 dark studio
+  interface, high-visibility 2px Royal Gold focus rings, and clean accessible
+  metadata across all 6 studio tabs, Audio Transport Bar, and all 7 dialogs.
+- Native Screen Reader Multiline Text (RICHEDIT50W Hybrid):
+  Embeds Windows' native RICHEDIT50W control inside PySide6 so NVDA and
+  Windows screen readers accurately announce "blank" on empty lines and
+  support full line-by-line caret navigation in Help Guide (F1) and dialogs.
+- Complete Keyboard Navigation & Shortcut Parity:
+  Preserves Ctrl+1..6, Alt+1..6, Ctrl+Tab, Ctrl+Enter, Alt+P/Q, F1, F7..F10,
+  and all per-tab Alt+<Key> mnemonics seamlessly across Qt and text areas.
 - Direct GitHub Auto-Updater (Ctrl+U): Check for updates, download,
   and automatically install/reinstall the latest version directly from
   https://github.com/Natthaphong-Pradit/Gemvox without manual extraction.
