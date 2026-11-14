@@ -4,12 +4,12 @@
 
 ---
 
-## ⚡ Quick Start: Download Ready-to-Use Windows Executables
+## Quick Start: Download Ready-to-Use Windows Executables
 
 > [!TIP]
 > **No Python installation or command-line setup is required!** Pre-compiled, self-contained Windows packages are readily available on our GitHub Releases page.
 
-👉 **[Download Latest Gemvox Release (v1.1.8)](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
+👉 **[Download Latest Gemvox Release](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
 
 You can choose between two convenient download formats:
 
@@ -23,12 +23,12 @@ You can choose between two convenient download formats:
 - **True Portable Mode**: Contains a `portable.txt` flag so that your `config.json` settings, custom vocal personas, and generated `.wav` audio files (`output/` folder) stay inside the application directory without touching your system registry or AppData.
 - **Pre-bundled Screen Reader DLLs**: Includes high-performance 32-bit and 64-bit client libraries for NVDA (`nvdaControllerClient`), JAWS, and ZDSR out of the box.
 
-### 🔄 In-App Auto-Updater (`Ctrl+U`)
-Gemvox features a built-in direct GitHub updater. Whenever a new version is released, simply press **`Ctrl+U`** inside Gemvox. The program will check `https://github.com/Natthaphong-Pradit/Gemvox`, download the latest update, and reinstall it in place automatically without losing your settings or audio files.
+### In-App Auto-Updater (`Ctrl+U`)
+Gemvox features a built-in direct GitHub updater. Whenever a new version is released, simply press **`Ctrl+U`** inside Gemvox, or when you launch program for the first time, it runs background update automaticly and brings the update window right infront on the screen. The program will check `https://github.com/Natthaphong-Pradit/Gemvox`, download the latest update, and reinstall it in place automatically without losing your settings or audio files.
 
 ---
 
-## 💻 Running from Source (For Developers & Power Users)
+## Running from Source (For Developers & Power Users)
 
 If you prefer running Gemvox directly from the Python source code or contributing to development:
 
@@ -41,7 +41,7 @@ cd Gemvox
 ### 2. Automated One-Click Setup & Launch (Recommended)
 Double-click (or press Enter on) the provided batch launchers in File Explorer:
 - **`Gemvox.bat`**: Automatically detects or creates the virtual environment (`venv`), installs missing dependencies from `requirements.txt`, and launches the Accessible GUI.
-- **`Test.bat`**: Runs the comprehensive diagnostic test suite verifying Python runtime, wxPython, google-genai SDK, sounddevice drivers, and UI dialogs.
+- **`Test.bat`**: Runs the comprehensive diagnostic test suite verifying Python runtime, pySide6, google-genai SDK, sounddevice drivers, and UI dialogs.
 - **`Gemvox_CLI.bat`**: Launches the accessible, linear interactive terminal menu.
 
 ### 3. Manual Virtual Environment Setup
@@ -74,12 +74,12 @@ python gemvox.py
 
 ---
 
-## 🔑 Configuring Your Gemini API Key
+## Configuring Your Gemini API Key
 
 Gemvox requires a Google Gemini API key (free or paid tier from [Google AI Studio](https://aistudio.google.com/)).
 
 You can configure your key in any of three easy ways:
-1. **Inside Gemvox Settings Tab (`Ctrl+6`)**: Paste your key into the API Key field, press **`Alt+C`** to test the connection, and press **`Alt+S`** to save.
+1. **Inside Gemvox Settings Tab (`Ctrl+6`)**: Paste your key into the API Key field, press **`Alt+C`** to optionally test the connection, and press **`Alt+S`** to save.
 2. **Via `.env` file**: Create a `.env` file in the application directory:
    ```env
    GEMINI_API_KEY=your_actual_api_key_here
@@ -91,22 +91,22 @@ You can configure your key in any of three easy ways:
 
 ---
 
-## 🌟 Why Gemvox?
+## Why Gemvox?
 
 The official Google AI Studio web interface is feature-rich, but its deeply nested visual components, dynamic ARIA regions, unannounced sliders, and visual voice cards make it difficult and exhausting for screen reader users (NVDA, JAWS, Windows Narrator).
 
 **Gemvox** solves this with a screen reader first-class design:
-- **Native Accessible Controls**: Built with native Win32 controls via `wxPython`, offering full UI Automation (UIA) and MSAA support with zero unlabeled buttons.
+- **Native Accessible Controls + Universal Design**: Built with native screen reader support and visual design for sighted and low vision users via `pySide6`, offering full UI Automation support with zero unlabeled buttons.
 - **Direct Screen Reader Speech Announcements**: Announces synthesis status and progress directly through your active screen reader (NVDA, JAWS, ZDSR, PC Talker) without causing SAPI 5 speech collisions.
 - **Auditory Sound Cues**: Distinct, subtle earcons for generation start, completion, stop, and error events.
 - **100% Keyboard-Driven Workflow**: High-contrast mnemonic shortcuts (`Alt+...`) and standard global keys (`Ctrl+Enter`, `Alt+P`, `Alt+Q`, `Ctrl+S`).
 - **Resilient Multi-Model Fallback**: Automatically connects to the Universal AI Studio TTS endpoint (`v1beta`) with intelligent fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash, and 2.0 Flash models.
 - **Dual Interface**: Use the accessible graphical studio or the linear interactive command-line interface (`--cli`).
-- **Bilingual Localization (English & Thai)**: Complete interface and spoken screen reader announcements in both English and Thai (ภาษาไทย).
+- **Bilingual Localization (English & Thai)**: Complete interface and spoken screen reader announcements in both English and Thai.
 
 ---
 
-## 🎛️ Key Features & Capabilities
+## Key Features & Capabilities
 
 ### 1. Single-Speaker Text-to-Speech (`Ctrl+1`)
 - Recite verbatim text transcripts with natural phrasing and pacing.
@@ -156,7 +156,7 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 
 ---
 
-## ⌨️ Complete Keyboard Shortcuts Guide
+## Complete Keyboard Shortcuts Guide
 
 | Shortcut | Description |
 |---|---|
@@ -188,7 +188,7 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 
 ---
 
-## 💻 CLI Commands (Command-Line Mode)
+## CLI Commands (Command-Line Mode)
 
 You can also use Gemvox as a powerful command-line tool:
 
@@ -214,7 +214,7 @@ python gemvox.py update
 
 ---
 
-## 🔧 Technical Specifications
+## Technical Specifications
 
 - **SDK**: `google-genai` (Targeting `v1beta` endpoint for speech synthesis)
 - **Supported Models**: `gemini-2.5-flash-preview-tts` (Default), `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`, `gemini-2.0-flash`
@@ -224,7 +224,7 @@ python gemvox.py update
 
 ---
 
-## 📄 License & Attribution
+## License & Attribution
 
 Copyright (c) 2026 Natthaphong Pradit. Released under the MIT License.
 Gemini is a trademark of Google LLC.
