@@ -1,172 +1,194 @@
 import threading
-import wx
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+from gemvox.ui.accessible_text import AccessibleTextArea
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.voice_catalog import (
     SUPPORTED_MODELS,
     get_all_voices,
-    find_voice
+    find_voice,
 )
 from gemvox.core.tts_engine import tts_engine
 from gemvox.core.audio_player import audio_player
 from gemvox.ui.dialogs import InlineTagDialog, StylePresetDialog, CreateCustomStyleDialog
 from gemvox.ui.player_bar import AudioTransportBar
 from gemvox.ui.theme import (
-    style_panel,
-    style_label,
-    style_text_ctrl,
-    style_combo,
+    apply_accessible,
+    call_after,
+    clean_mnemonic,
+    get_qfont,
     style_button,
-    style_staticbox,
+    style_label,
 )
 
 
-class SingleSpeakerPanel(wx.Panel):
-    """Panel for single-speaker TTS generation with full style, vocal tag control, and luxury studio layout."""
-    def __init__(self, parent):
+class SingleSpeakerPanel(QWidget):
+    """Panel for single-speaker TTS generation with full style, vocal tag control, and Universal Design layout."""
+
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.last_audio_bytes = None
         self.last_saved_path = None
-        style_panel(self, accessible_name=tr("tab_single"))
+        self._voices_cache = []
+        self.setAccessibleName(clean_mnemonic(tr("tab_single")))
         self._init_ui()
         config.add_voices_listener(self._on_voices_changed)
 
     def _on_voices_changed(self):
-        wx.CallAfter(self.refresh_voices)
+        call_after(self.refresh_voices)
 
     def _init_ui(self):
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(14, 12, 14, 12)
+        main_layout.setSpacing(10)
 
         # 1. Text Input Section
-        text_label = wx.StaticText(self, label=tr("ss_text_label"))
+        text_label = QLabel(tr("ss_text_label"), self)
         style_label(text_label, "section")
-        main_sizer.Add(text_label, 0, wx.LEFT | wx.TOP | wx.RIGHT, 14)
+        main_layout.addWidget(text_label)
 
-        self.text_ctrl = wx.TextCtrl(
-            self,
-            value=tr("ss_default_text"),
-            style=wx.TE_MULTILINE | wx.TE_RICH2
+        self.text_ctrl = AccessibleTextArea(tr("ss_default_text"), self)
+        self.text_ctrl.setTabChangesFocus(True)
+        self.text_ctrl.setFont(get_qfont(11))
+        self.text_ctrl.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.text_ctrl.customContextMenuRequested.connect(self.on_text_context_menu)
+        apply_accessible(
+            self.text_ctrl,
+            name=tr("ss_text_label"),
+            description="Enter text to synthesize into speech",
+            label=text_label,
         )
-        style_text_ctrl(self.text_ctrl, multiline=True)
-        self.text_ctrl.Bind(wx.EVT_CONTEXT_MENU, self.on_text_context_menu)
-        main_sizer.Add(self.text_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP | wx.BOTTOM, 12)
+        main_layout.addWidget(self.text_ctrl, 1)
 
         # Vocal Tag Insertion & Text Tools bar
-        tag_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_insert_tag = wx.Button(self, label=tr("btn_insert_tag_i"))
-        self.btn_clear = wx.Button(self, label=tr("btn_clear_text"))
-        self.btn_stats = wx.Button(self, label=tr("btn_stats"))
+        tag_row = QHBoxLayout()
+        tag_row.setSpacing(8)
+        self.btn_insert_tag = QPushButton(tr("btn_insert_tag_i"), self)
+        self.btn_clear = QPushButton(tr("btn_clear_text"), self)
+        self.btn_stats = QPushButton(tr("btn_stats"), self)
         style_button(self.btn_insert_tag, "secondary")
         style_button(self.btn_clear, "secondary")
         style_button(self.btn_stats, "secondary")
-        tag_sizer.Add(self.btn_insert_tag, 0, wx.RIGHT, 8)
-        tag_sizer.Add(self.btn_clear, 0, wx.RIGHT, 8)
-        tag_sizer.Add(self.btn_stats, 0)
-        main_sizer.Add(tag_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        tag_row.addWidget(self.btn_insert_tag)
+        tag_row.addWidget(self.btn_clear)
+        tag_row.addWidget(self.btn_stats)
+        tag_row.addStretch(1)
+        main_layout.addLayout(tag_row)
 
         # 2. Options Card: Model, Voice, Style
-        opt_box = wx.StaticBox(self, label=tr("ss_box_params"))
-        style_staticbox(opt_box)
-        opt_box_sizer = wx.StaticBoxSizer(opt_box, wx.VERTICAL)
-
-        grid_sizer = wx.FlexGridSizer(rows=3, cols=3, vgap=10, hgap=12)
-        grid_sizer.AddGrowableCol(1, 1)
+        opt_box = QGroupBox(clean_mnemonic(tr("ss_box_params")), self)
+        opt_box.setAccessibleName(clean_mnemonic(tr("ss_box_params")))
+        grid = QGridLayout(opt_box)
+        grid.setContentsMargins(12, 14, 12, 12)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(1, 1)
 
         # Model row
-        lbl_model = wx.StaticText(opt_box, label=tr("lbl_model"))
-        style_label(lbl_model)
-        model_choices = [m["name"] for m in SUPPORTED_MODELS]
-        self.combo_model = wx.ComboBox(opt_box, choices=model_choices, style=wx.CB_READONLY)
-        style_combo(self.combo_model)
+        lbl_model = QLabel(tr("lbl_model"), opt_box)
+        self.combo_model = QComboBox(opt_box)
+        self.combo_model.addItems([m["name"] for m in SUPPORTED_MODELS])
         def_m = config.get("default_model", "gemini-3.8-flash-tts")
         sel_m = 0
         for i, m in enumerate(SUPPORTED_MODELS):
             if m["id"] == def_m:
                 sel_m = i
                 break
-        self.combo_model.SetSelection(sel_m)
-        grid_sizer.Add(lbl_model, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid_sizer.Add(self.combo_model, 1, wx.EXPAND)
-        grid_sizer.AddStretchSpacer()
+        self.combo_model.setCurrentIndex(sel_m)
+        apply_accessible(self.combo_model, name=tr("lbl_model"), label=lbl_model)
+        grid.addWidget(lbl_model, 0, 0)
+        grid.addWidget(self.combo_model, 0, 1)
 
         # Voice row
-        lbl_voice = wx.StaticText(opt_box, label=tr("lbl_voice"))
-        style_label(lbl_voice)
-        self.combo_voice = wx.ComboBox(opt_box, choices=[], style=wx.CB_READONLY)
-        style_combo(self.combo_voice)
+        lbl_voice = QLabel(tr("lbl_voice"), opt_box)
+        self.combo_voice = QComboBox(opt_box)
+        apply_accessible(self.combo_voice, name=tr("lbl_voice"), label=lbl_voice)
         self.refresh_voices()
 
-        self.btn_audition = wx.Button(opt_box, label=tr("btn_audition_u"))
+        self.btn_audition = QPushButton(tr("btn_audition_u"), opt_box)
         style_button(self.btn_audition, "gold")
-        grid_sizer.Add(lbl_voice, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid_sizer.Add(self.combo_voice, 1, wx.EXPAND)
-        grid_sizer.Add(self.btn_audition, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.addWidget(lbl_voice, 1, 0)
+        grid.addWidget(self.combo_voice, 1, 1)
+        grid.addWidget(self.btn_audition, 1, 2)
 
         # Style row
-        lbl_style = wx.StaticText(opt_box, label=tr("lbl_style"))
-        style_label(lbl_style)
-        self.txt_style = wx.TextCtrl(opt_box, value=config.get("default_style", "cheerful and friendly"))
-        style_text_ctrl(self.txt_style)
-        style_btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_browse_style = wx.Button(opt_box, label=tr("btn_browse_styles"))
-        self.btn_create_style = wx.Button(opt_box, label=tr("btn_create_style"))
+        lbl_style = QLabel(tr("lbl_style"), opt_box)
+        self.txt_style = QLineEdit(config.get("default_style", "cheerful and friendly"), opt_box)
+        apply_accessible(self.txt_style, name=tr("lbl_style"), label=lbl_style)
+
+        style_btn_row = QHBoxLayout()
+        style_btn_row.setSpacing(6)
+        self.btn_browse_style = QPushButton(tr("btn_browse_styles"), opt_box)
+        self.btn_create_style = QPushButton(tr("btn_create_style"), opt_box)
         style_button(self.btn_browse_style, "secondary")
         style_button(self.btn_create_style, "secondary")
-        style_btn_sizer.Add(self.btn_browse_style, 0, wx.RIGHT, 6)
-        style_btn_sizer.Add(self.btn_create_style, 0)
-        grid_sizer.Add(lbl_style, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid_sizer.Add(self.txt_style, 1, wx.EXPAND)
-        grid_sizer.Add(style_btn_sizer, 0, wx.ALIGN_CENTER_VERTICAL)
+        style_btn_row.addWidget(self.btn_browse_style)
+        style_btn_row.addWidget(self.btn_create_style)
 
-        opt_box_sizer.Add(grid_sizer, 1, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(opt_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        grid.addWidget(lbl_style, 2, 0)
+        grid.addWidget(self.txt_style, 2, 1)
+        grid.addLayout(style_btn_row, 2, 2)
+
+        main_layout.addWidget(opt_box)
 
         # 3. Generation & Export Bar
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_generate = wx.Button(self, label=tr("btn_generate_speech"))
-        self.btn_generate.SetDefault()
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        self.btn_generate = QPushButton(tr("btn_generate_speech"), self)
+        self.btn_generate.setDefault(True)
         style_button(self.btn_generate, "primary")
 
-        self.btn_save = wx.Button(self, label=tr("btn_save_audio"))
-        self.btn_save.Enable(False)
+        self.btn_save = QPushButton(tr("btn_save_audio"), self)
+        self.btn_save.setEnabled(False)
         style_button(self.btn_save, "secondary")
 
-        btn_sizer.Add(self.btn_generate, 0, wx.RIGHT, 10)
-        btn_sizer.Add(self.btn_save, 0)
-        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        btn_row.addWidget(self.btn_generate)
+        btn_row.addWidget(self.btn_save)
+        btn_row.addStretch(1)
+        main_layout.addLayout(btn_row)
 
         # 4. Studio Audio Player & Transport Deck
         self.player_bar = AudioTransportBar(
             self,
-            get_audio_bytes_cb=lambda: self.last_audio_bytes
+            get_audio_bytes_cb=lambda: self.last_audio_bytes,
         )
         self.btn_play = self.player_bar.btn_play
         self.btn_stop = self.player_bar.btn_stop
-        main_sizer.Add(self.player_bar.sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        main_layout.addWidget(self.player_bar)
 
         # 5. Accessible Status Readout Console
-        self.lbl_status = wx.StaticText(self, label=tr("status_ready"))
+        self.lbl_status = QLabel(tr("status_ready"), self)
         style_label(self.lbl_status, "status")
-        main_sizer.Add(self.lbl_status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        apply_accessible(self.lbl_status, name="Status")
+        main_layout.addWidget(self.lbl_status)
 
-        self.SetSizer(main_sizer)
-
-        # Bindings
-        self.btn_insert_tag.Bind(wx.EVT_BUTTON, self.on_insert_tag)
-        self.btn_clear.Bind(wx.EVT_BUTTON, self.on_clear)
-        self.btn_stats.Bind(wx.EVT_BUTTON, self.on_announce_stats)
-        self.btn_browse_style.Bind(wx.EVT_BUTTON, self.on_browse_style)
-        self.btn_create_style.Bind(wx.EVT_BUTTON, self.on_create_custom_style)
-        self.btn_audition.Bind(wx.EVT_BUTTON, self.on_audition_voice)
-        self.btn_generate.Bind(wx.EVT_BUTTON, self.on_generate)
-        self.btn_save.Bind(wx.EVT_BUTTON, self.on_save)
+        # Connections
+        self.btn_insert_tag.clicked.connect(self.on_insert_tag)
+        self.btn_clear.clicked.connect(self.on_clear)
+        self.btn_stats.clicked.connect(self.on_announce_stats)
+        self.btn_browse_style.clicked.connect(self.on_browse_style)
+        self.btn_create_style.clicked.connect(self.on_create_custom_style)
+        self.btn_audition.clicked.connect(self.on_audition_voice)
+        self.btn_generate.clicked.connect(self.on_generate)
+        self.btn_save.clicked.connect(self.on_save)
 
     def refresh_voices(self, select_voice_id: str = None):
         """Populate the voice combo box with all prebuilt and custom voices."""
-        if select_voice_id is None and hasattr(self, " _voices_cache") and self.combo_voice.GetCount() > 0:
-            select_voice_id = self.get_selected_voice_id()
-        elif select_voice_id is None and self.combo_voice.GetCount() > 0:
+        if select_voice_id is None and self.combo_voice.count() > 0:
             select_voice_id = self.get_selected_voice_id()
 
         voices = get_all_voices()
@@ -177,7 +199,8 @@ class SingleSpeakerPanel(wx.Panel):
                 choices.append(f"{v.display_name} ({v.id}) - {v.tone}")
             else:
                 choices.append(f"{v.id} - {v.tone} ({v.gender})")
-        self.combo_voice.Set(choices)
+        self.combo_voice.clear()
+        self.combo_voice.addItems(choices)
 
         target_voice = select_voice_id or config.get("default_voice", "Kore")
         sel_idx = 0
@@ -186,7 +209,7 @@ class SingleSpeakerPanel(wx.Panel):
                 sel_idx = i
                 break
         if choices:
-            self.combo_voice.SetSelection(sel_idx)
+            self.combo_voice.setCurrentIndex(sel_idx)
 
     def select_voice_by_id(self, voice_id: str, display_name: str = None, description: str = ""):
         """Select a voice by ID in the combo box, adding it to custom voices if it is from the online library."""
@@ -196,127 +219,98 @@ class SingleSpeakerPanel(wx.Panel):
                 voice_id=voice_id,
                 display_name=display_name or voice_id,
                 voice_type="Extended Library",
-                description=description
+                description=description,
             )
         self.refresh_voices(select_voice_id=voice_id)
 
     def get_selected_voice_id(self) -> str:
-        voices = getattr(self, "_voices_cache", None) or get_all_voices()
-        sel = self.combo_voice.GetSelection()
-        if sel != wx.NOT_FOUND and sel < len(voices):
+        voices = self._voices_cache or get_all_voices()
+        sel = self.combo_voice.currentIndex()
+        if 0 <= sel < len(voices):
             return voices[sel].id
         return "Kore"
 
     def get_selected_model_id(self) -> str:
-        sel = self.combo_model.GetSelection()
-        if sel != wx.NOT_FOUND and sel < len(SUPPORTED_MODELS):
+        sel = self.combo_model.currentIndex()
+        if 0 <= sel < len(SUPPORTED_MODELS):
             return SUPPORTED_MODELS[sel]["id"]
         return "gemini-3.8-flash-tts"
 
-    def on_announce_stats(self, event=None):
-        stats = tts_engine.calculate_text_stats(self.text_ctrl.GetValue())
-        self.lbl_status.SetLabel(tr("status_text_stats", **stats))
+    def on_announce_stats(self, *args):
+        stats = tts_engine.calculate_text_stats(self.text_ctrl.toPlainText())
+        self.lbl_status.setText(tr("status_text_stats", **stats))
         announcer.announce(tr("announce_text_stats", **stats))
 
-    def on_text_context_menu(self, event):
+    def on_text_context_menu(self, pos):
         """Standard accessible Windows context menu for text editing."""
-        menu = wx.Menu()
-        m_undo = menu.Append(wx.ID_UNDO, tr("menu_undo"))
-        m_redo = menu.Append(wx.ID_REDO, tr("menu_redo"))
-        menu.AppendSeparator()
-        m_cut = menu.Append(wx.ID_CUT, tr("menu_cut"))
-        m_copy = menu.Append(wx.ID_COPY, tr("menu_copy"))
-        m_paste = menu.Append(wx.ID_PASTE, tr("menu_paste"))
-        m_del = menu.Append(wx.ID_DELETE, tr("menu_delete"))
-        menu.AppendSeparator()
-        m_all = menu.Append(wx.ID_SELECTALL, tr("menu_select_all"))
-        menu.AppendSeparator()
-        m_tag = menu.Append(wx.ID_ANY, tr("btn_insert_tag_i"))
+        menu = QMenu(self)
 
-        m_undo.Enable(self.text_ctrl.CanUndo())
-        m_redo.Enable(self.text_ctrl.CanRedo())
-        m_cut.Enable(self.text_ctrl.CanCut())
-        m_copy.Enable(self.text_ctrl.CanCopy())
-        m_paste.Enable(self.text_ctrl.CanPaste())
+        act_undo = menu.addAction(clean_mnemonic(tr("menu_undo")))
+        act_redo = menu.addAction(clean_mnemonic(tr("menu_redo")))
+        menu.addSeparator()
+        act_cut = menu.addAction(clean_mnemonic(tr("menu_cut")))
+        act_copy = menu.addAction(clean_mnemonic(tr("menu_copy")))
+        act_paste = menu.addAction(clean_mnemonic(tr("menu_paste")))
+        act_del = menu.addAction(clean_mnemonic(tr("menu_delete")))
+        menu.addSeparator()
+        act_all = menu.addAction(clean_mnemonic(tr("menu_select_all")))
+        menu.addSeparator()
+        act_tag = menu.addAction(clean_mnemonic(tr("btn_insert_tag_i")))
 
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.Undo(), m_undo)
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.Redo(), m_redo)
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.Cut(), m_cut)
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.Copy(), m_copy)
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.Paste(), m_paste)
-        self.Bind(wx.EVT_MENU, lambda e: self._delete_selection_or_char(), m_del)
-        self.Bind(wx.EVT_MENU, lambda e: self.text_ctrl.SelectAll(), m_all)
-        self.Bind(wx.EVT_MENU, self.on_insert_tag, m_tag)
+        act_undo.setEnabled(self.text_ctrl.canUndo())
+        act_redo.setEnabled(self.text_ctrl.canRedo())
+        act_cut.setEnabled(self.text_ctrl.hasSelection())
+        act_copy.setEnabled(self.text_ctrl.hasSelection())
+        act_paste.setEnabled(self.text_ctrl.canPaste())
 
-        self.PopupMenu(menu)
-        menu.Destroy()
+        act_undo.triggered.connect(self.text_ctrl.undo)
+        act_redo.triggered.connect(self.text_ctrl.redo)
+        act_cut.triggered.connect(self.text_ctrl.cut)
+        act_copy.triggered.connect(self.text_ctrl.copy)
+        act_paste.triggered.connect(self.text_ctrl.paste)
+        act_del.triggered.connect(self.text_ctrl.delete_selection_or_char)
+        act_all.triggered.connect(self.text_ctrl.selectAll)
+        act_tag.triggered.connect(self.on_insert_tag)
 
-    def _delete_selection_or_char(self):
-        sel_from, sel_to = self.text_ctrl.GetSelection()
-        if sel_from != sel_to:
-            self.text_ctrl.Remove(sel_from, sel_to)
-        else:
-            pos = self.text_ctrl.GetInsertionPoint()
-            if pos < self.text_ctrl.GetLastPosition():
-                self.text_ctrl.Remove(pos, pos + 1)
+        menu.exec(self.text_ctrl.mapToGlobal(pos))
 
-    def on_insert_tag(self, event=None):
-        sel_from, sel_to = self.text_ctrl.GetSelection()
-        pos = self.text_ctrl.GetInsertionPoint()
-        val = self.text_ctrl.GetValue()
-
+    def on_insert_tag(self, *args):
         dlg = InlineTagDialog(self)
-        if dlg.ShowModal() == wx.ID_OK and dlg.selected_tag:
+        if dlg.exec() and dlg.selected_tag:
             tag = dlg.selected_tag
-            self.text_ctrl.SetFocus()
-
-            if sel_from != sel_to:
-                self.text_ctrl.SetSelection(sel_from, sel_to)
-                prefix = " " if (sel_from > 0 and not val[sel_from - 1].isspace()) else ""
-                suffix = " " if (sel_to < len(val) and not val[sel_to].isspace() and val[sel_to] not in ".,!?;:") else ""
-            else:
-                self.text_ctrl.SetInsertionPoint(pos)
-                prefix = " " if (pos > 0 and not val[pos - 1].isspace()) else ""
-                suffix = " " if (pos < len(val) and not val[pos].isspace() and val[pos] not in ".,!?;:") else ""
-
-            tag_text = f"{prefix}{tag}{suffix}"
-            self.text_ctrl.WriteText(tag_text)
-            style_text_ctrl(self.text_ctrl, multiline=True)
+            self.text_ctrl.setFocus()
+            self.text_ctrl.insert_text_at_selection(tag)
             announcer.announce(tr("announce_inserted_tag", tag=tag))
         else:
-            self.text_ctrl.SetFocus()
-        dlg.Destroy()
+            self.text_ctrl.setFocus()
 
-    def on_clear(self, event):
-        self.text_ctrl.Clear()
-        style_text_ctrl(self.text_ctrl, multiline=True)
-        self.text_ctrl.SetFocus()
+    def on_clear(self, *args):
+        self.text_ctrl.clear()
+        self.text_ctrl.setFocus()
         announcer.announce(tr("msg_text_cleared"))
 
-    def on_browse_style(self, event):
+    def on_browse_style(self, *args):
         dlg = StylePresetDialog(self)
-        if dlg.ShowModal() == wx.ID_OK and dlg.selected_style:
-            self.txt_style.SetValue(dlg.selected_style)
-            self.txt_style.SetFocus()
+        if dlg.exec() and dlg.selected_style:
+            self.txt_style.setText(dlg.selected_style)
+            self.txt_style.setFocus()
             announcer.announce(tr("announce_applied_style", style=dlg.selected_style))
-        dlg.Destroy()
 
-    def on_create_custom_style(self, event=None):
-        current_style = self.txt_style.GetValue().strip()
+    def on_create_custom_style(self, *args):
+        current_style = self.txt_style.text().strip()
         dlg = CreateCustomStyleDialog(self, initial_style=current_style)
-        if dlg.ShowModal() == wx.ID_OK and dlg.created_style:
-            self.txt_style.SetValue(dlg.created_style)
-            self.txt_style.SetFocus()
-            self.lbl_status.SetLabel(tr("status_saved_custom_style", name=dlg.created_name, style=dlg.created_style))
+        if dlg.exec() and dlg.created_style:
+            self.txt_style.setText(dlg.created_style)
+            self.txt_style.setFocus()
+            self.lbl_status.setText(tr("status_saved_custom_style", name=dlg.created_name, style=dlg.created_style))
             announcer.announce(tr("announce_saved_custom_style", name=dlg.created_name))
-        dlg.Destroy()
 
-    def on_audition_voice(self, event):
+    def on_audition_voice(self, *args):
         voice_id = self.get_selected_voice_id()
         model_id = self.get_selected_model_id()
         audition_phrase = f"Hello, I am {voice_id}. This is a preview of my voice."
 
-        self.lbl_status.SetLabel(tr("status_auditioning", voice=voice_id))
+        self.lbl_status.setText(tr("status_auditioning", voice=voice_id))
 
         def _worker():
             try:
@@ -324,28 +318,28 @@ class SingleSpeakerPanel(wx.Panel):
                     text=audition_phrase,
                     voice=voice_id,
                     style="natural and clear",
-                    model=model_id
+                    model=model_id,
                 )
                 audio_player.play_wav_bytes(wav_bytes)
-                wx.CallAfter(self.lbl_status.SetLabel, tr("status_audition_done", voice=voice_id))
+                call_after(self.lbl_status.setText, tr("status_audition_done", voice=voice_id))
             except Exception as e:
-                wx.CallAfter(self.lbl_status.SetLabel, tr("status_error", error=e))
+                call_after(self.lbl_status.setText, tr("status_error", error=e))
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def on_generate(self, event=None):
-        text = self.text_ctrl.GetValue().strip()
+    def on_generate(self, *args):
+        text = self.text_ctrl.toPlainText().strip()
         if not text:
             announcer.announce(tr("msg_enter_text"))
-            self.text_ctrl.SetFocus()
+            self.text_ctrl.setFocus()
             return
 
         voice_id = self.get_selected_voice_id()
         model_id = self.get_selected_model_id()
-        style = self.txt_style.GetValue().strip()
+        style = self.txt_style.text().strip()
 
-        self.btn_generate.Enable(False)
-        self.lbl_status.SetLabel(tr("status_generating_single", voice=voice_id))
+        self.btn_generate.setEnabled(False)
+        self.lbl_status.setText(tr("status_generating_single", voice=voice_id))
 
         def _worker():
             try:
@@ -353,48 +347,46 @@ class SingleSpeakerPanel(wx.Panel):
                     text=text,
                     voice=voice_id,
                     style=style,
-                    model=model_id
+                    model=model_id,
                 )
                 self.last_audio_bytes = wav_bytes
                 self.last_saved_path = out_path
 
                 def _ui_update():
-                    self.btn_generate.Enable(True)
-                    self.btn_save.Enable(True)
+                    self.btn_generate.setEnabled(True)
+                    self.btn_save.setEnabled(True)
                     self.player_bar.set_audio_ready(True, wav_bytes)
-                    self.lbl_status.SetLabel(tr("status_single_ready", duration=duration, path=out_path))
+                    self.lbl_status.setText(tr("status_single_ready", duration=duration, path=out_path))
                     if config.get("autoplay", True):
                         audio_player.play_wav_bytes(wav_bytes)
 
-                wx.CallAfter(_ui_update)
+                call_after(_ui_update)
             except Exception as e:
                 def _error_update():
-                    self.btn_generate.Enable(True)
-                    self.lbl_status.SetLabel(tr("status_error", error=e))
-                wx.CallAfter(_error_update)
+                    self.btn_generate.setEnabled(True)
+                    self.lbl_status.setText(tr("status_error", error=e))
+
+                call_after(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def on_play_stop(self, event=None):
+    def on_play_stop(self, *args):
         self.player_bar.on_play_pause()
 
-    def on_save(self, event=None):
+    def on_save(self, *args):
         if not self.last_audio_bytes:
             announcer.announce(tr("msg_no_audio_save"))
             return
 
         default_name = f"gemvox_speech_{self.get_selected_voice_id().lower()}.wav"
-        with wx.FileDialog(
+        dest, _ = QFileDialog.getSaveFileName(
             self,
-            message=tr("menu_save_audio_help"),
-            defaultDir=str(config.output_dir),
-            defaultFile=default_name,
-            wildcard="WAV Audio (*.wav)|*.wav",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
-        ) as dlg:
-            if dlg.ShowModal() == wx.ID_OK:
-                dest = dlg.GetPath()
-                with open(dest, "wb") as f:
-                    f.write(self.last_audio_bytes)
-                announcer.announce(tr("announce_audio_saved", path=dest))
-                self.lbl_status.SetLabel(tr("status_saved_path", path=dest))
+            tr("menu_save_audio_help"),
+            str(config.output_dir / default_name),
+            "WAV Audio (*.wav)",
+        )
+        if dest:
+            with open(dest, "wb") as f:
+                f.write(self.last_audio_bytes)
+            announcer.announce(tr("announce_audio_saved", path=dest))
+            self.lbl_status.setText(tr("status_saved_path", path=dest))

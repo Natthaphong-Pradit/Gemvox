@@ -1,16 +1,32 @@
+from pathlib import Path
 import threading
-import wx
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QButtonGroup,
+    QFileDialog,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
+    QWidget,
+)
+from gemvox.ui.accessible_text import AccessibleTextArea
 from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.tts_engine import tts_engine
 from gemvox.ui.theme import (
-    style_panel,
-    style_label,
-    style_text_ctrl,
+    apply_accessible,
+    call_after,
+    clean_mnemonic,
+    get_qfont,
     style_button,
-    style_radiobox,
-    style_staticbox,
+    style_label,
 )
 
 MANDATORY_CONSENT_TEXT = (
@@ -18,173 +34,200 @@ MANDATORY_CONSENT_TEXT = (
 )
 
 
-class VoiceReplicationPanel(wx.Panel):
+class _StorageModeGroup(QGroupBox):
+    """Accessible radio group for Stateful vs Stateless storage mode."""
+
+    def __init__(self, parent=None):
+        super().__init__(clean_mnemonic(tr("lbl_storage_mode")), parent)
+        self.setAccessibleName(clean_mnemonic(tr("lbl_storage_mode")))
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 12, 10, 8)
+        layout.setSpacing(6)
+
+        self.group = QButtonGroup(self)
+        self.rb_stateful = QRadioButton(tr("mode_stateful"), self)
+        self.rb_stateless = QRadioButton(tr("mode_stateless"), self)
+        self.rb_stateful.setChecked(True)
+        apply_accessible(self.rb_stateful, name=tr("mode_stateful"))
+        apply_accessible(self.rb_stateless, name=tr("mode_stateless"))
+
+        self.group.addButton(self.rb_stateful, 0)
+        self.group.addButton(self.rb_stateless, 1)
+        layout.addWidget(self.rb_stateful)
+        layout.addWidget(self.rb_stateless)
+
+    def focus_active_radio(self):
+        checked = self.group.checkedButton()
+        if checked is not None:
+            checked.setFocus()
+        else:
+            self.rb_stateful.setFocus()
+
+    def selected_index(self) -> int:
+        return self.group.checkedId()
+
+
+class VoiceReplicationPanel(QWidget):
     """Panel for replicating a speaker voice with reference and consent audio."""
-    def __init__(self, parent):
+
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.last_voice_id = None
-        style_panel(self, accessible_name=tr("tab_replication"))
+        self.setAccessibleName(clean_mnemonic(tr("tab_replication")))
         self._init_ui()
 
     def _init_ui(self):
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(14, 12, 14, 12)
+        main_layout.setSpacing(10)
 
-        info_box = wx.StaticText(
-            self,
-            label=tr("vr_info")
-        )
+        info_box = QLabel(tr("vr_info"), self)
+        info_box.setWordWrap(True)
         style_label(info_box, "muted")
-        main_sizer.Add(info_box, 0, wx.ALL, 14)
+        main_layout.addWidget(info_box)
 
-        rep_box = wx.StaticBox(self, label=tr("vr_box_cloning"))
-        style_staticbox(rep_box)
-        rep_box_sizer = wx.StaticBoxSizer(rep_box, wx.VERTICAL)
-
-        grid = wx.FlexGridSizer(rows=5, cols=3, vgap=10, hgap=12)
-        grid.AddGrowableCol(1, 1)
+        rep_box = QGroupBox(clean_mnemonic(tr("vr_box_cloning")), self)
+        rep_box.setAccessibleName(clean_mnemonic(tr("vr_box_cloning")))
+        grid = QGridLayout(rep_box)
+        grid.setContentsMargins(12, 14, 12, 12)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(1, 1)
 
         # 1. Voice Name
-        lbl_name = wx.StaticText(rep_box, label=tr("lbl_voice_name"))
-        style_label(lbl_name)
-        self.txt_name = wx.TextCtrl(rep_box, value="My Replicated Voice")
-        style_text_ctrl(self.txt_name)
-        grid.Add(lbl_name, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.txt_name, 1, wx.EXPAND)
-        grid.AddStretchSpacer()
+        lbl_name = QLabel(tr("lbl_voice_name"), rep_box)
+        self.txt_name = QLineEdit("My Replicated Voice", rep_box)
+        apply_accessible(self.txt_name, name=tr("lbl_voice_name"), label=lbl_name)
+        grid.addWidget(lbl_name, 0, 0)
+        grid.addWidget(self.txt_name, 0, 1)
 
         # 2. Reference audio file
-        lbl_ref = wx.StaticText(rep_box, label=tr("lbl_ref_audio"))
-        style_label(lbl_ref)
-        self.txt_ref_path = wx.TextCtrl(rep_box, value="")
-        style_text_ctrl(self.txt_ref_path)
-        self.btn_browse_ref = wx.Button(rep_box, label=tr("btn_browse_ref"))
+        lbl_ref = QLabel(tr("lbl_ref_audio"), rep_box)
+        self.txt_ref_path = QLineEdit("", rep_box)
+        apply_accessible(self.txt_ref_path, name=tr("lbl_ref_audio"), label=lbl_ref)
+        self.btn_browse_ref = QPushButton(tr("btn_browse_ref"), rep_box)
         style_button(self.btn_browse_ref, "secondary")
-        grid.Add(lbl_ref, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.txt_ref_path, 1, wx.EXPAND)
-        grid.Add(self.btn_browse_ref, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.addWidget(lbl_ref, 1, 0)
+        grid.addWidget(self.txt_ref_path, 1, 1)
+        grid.addWidget(self.btn_browse_ref, 1, 2)
 
         # 3. Consent statement box
-        lbl_consent_statement = wx.StaticText(rep_box, label=tr("lbl_consent_phrase"))
-        style_label(lbl_consent_statement)
-        self.txt_consent_phrase = wx.TextCtrl(
-            rep_box,
-            value=MANDATORY_CONSENT_TEXT,
-            style=wx.TE_MULTILINE | wx.TE_READONLY
-        )
-        style_text_ctrl(self.txt_consent_phrase, multiline=True)
-        self.btn_copy_consent = wx.Button(rep_box, label=tr("btn_copy_statement"))
+        lbl_consent_statement = QLabel(tr("lbl_consent_phrase"), rep_box)
+        self.txt_consent_phrase = AccessibleTextArea(MANDATORY_CONSENT_TEXT, rep_box, read_only=True)
+        self.txt_consent_phrase.setTabChangesFocus(True)
+        self.txt_consent_phrase.setFixedHeight(64)
+        self.txt_consent_phrase.setFont(get_qfont(10))
+        apply_accessible(self.txt_consent_phrase, name=tr("lbl_consent_phrase"), label=lbl_consent_statement)
+        self.btn_copy_consent = QPushButton(tr("btn_copy_statement"), rep_box)
         style_button(self.btn_copy_consent, "gold")
-        grid.Add(lbl_consent_statement, 0, wx.ALIGN_TOP)
-        grid.Add(self.txt_consent_phrase, 1, wx.EXPAND)
-        grid.Add(self.btn_copy_consent, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.addWidget(lbl_consent_statement, 2, 0, Qt.AlignTop)
+        grid.addWidget(self.txt_consent_phrase, 2, 1)
+        grid.addWidget(self.btn_copy_consent, 2, 2, Qt.AlignVCenter)
 
         # 4. Consent audio file
-        lbl_con = wx.StaticText(rep_box, label=tr("lbl_con_audio"))
-        style_label(lbl_con)
-        self.txt_con_path = wx.TextCtrl(rep_box, value="")
-        style_text_ctrl(self.txt_con_path)
-        self.btn_browse_con = wx.Button(rep_box, label=tr("btn_browse_con"))
+        lbl_con = QLabel(tr("lbl_con_audio"), rep_box)
+        self.txt_con_path = QLineEdit("", rep_box)
+        apply_accessible(self.txt_con_path, name=tr("lbl_con_audio"), label=lbl_con)
+        self.btn_browse_con = QPushButton(tr("btn_browse_con"), rep_box)
         style_button(self.btn_browse_con, "secondary")
-        grid.Add(lbl_con, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.txt_con_path, 1, wx.EXPAND)
-        grid.Add(self.btn_browse_con, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.addWidget(lbl_con, 3, 0)
+        grid.addWidget(self.txt_con_path, 3, 1)
+        grid.addWidget(self.btn_browse_con, 3, 2)
 
         # 5. Storage Mode
-        lbl_mode = wx.StaticText(rep_box, label=tr("lbl_storage_mode"))
-        style_label(lbl_mode)
-        self.radio_mode = wx.RadioBox(
-            rep_box,
-            choices=[tr("mode_stateful"), tr("mode_stateless")],
-            majorDimension=1
-        )
-        style_radiobox(self.radio_mode)
-        grid.Add(lbl_mode, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.radio_mode, 1, wx.EXPAND)
-        grid.AddStretchSpacer()
+        lbl_mode = QLabel(tr("lbl_storage_mode"), rep_box)
+        self.radio_mode = _StorageModeGroup(rep_box)
+        lbl_mode.setBuddy(self.radio_mode.rb_stateful)
+        grid.addWidget(lbl_mode, 4, 0, Qt.AlignTop)
+        grid.addWidget(self.radio_mode, 4, 1)
 
-        rep_box_sizer.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
-        main_sizer.Add(rep_box_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        main_layout.addWidget(rep_box)
 
         # Actions
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_replicate = wx.Button(self, label=tr("btn_replicate"))
-        self.btn_replicate.SetDefault()
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(10)
+        self.btn_replicate = QPushButton(tr("btn_replicate"), self)
+        self.btn_replicate.setDefault(True)
         style_button(self.btn_replicate, "primary")
 
-        self.btn_copy_id = wx.Button(self, label=tr("btn_copy_id_y"))
-        self.btn_copy_id.Enable(False)
+        self.btn_copy_id = QPushButton(tr("btn_copy_id_y"), self)
+        self.btn_copy_id.setEnabled(False)
         style_button(self.btn_copy_id, "gold")
 
-        btn_sizer.Add(self.btn_replicate, 0, wx.RIGHT, 10)
-        btn_sizer.Add(self.btn_copy_id, 0)
-        main_sizer.Add(btn_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        btn_row.addWidget(self.btn_replicate)
+        btn_row.addWidget(self.btn_copy_id)
+        btn_row.addStretch(1)
+        main_layout.addLayout(btn_row)
 
         # Output & Status
-        self.lbl_id = wx.StaticText(self, label=tr("lbl_voice_id_none"))
+        self.lbl_id = QLabel(tr("lbl_voice_id_none"), self)
         style_label(self.lbl_id, "mono")
-        self.lbl_status = wx.StaticText(self, label=tr("status_ready"))
+        apply_accessible(self.lbl_id, name="Assigned Voice ID")
+
+        self.lbl_status = QLabel(tr("status_ready"), self)
         style_label(self.lbl_status, "status")
-        main_sizer.Add(self.lbl_id, 0, wx.LEFT | wx.RIGHT, 14)
-        main_sizer.Add(self.lbl_status, 0, wx.ALL, 14)
+        apply_accessible(self.lbl_status, name="Status")
 
-        self.SetSizer(main_sizer)
+        main_layout.addWidget(self.lbl_id)
+        main_layout.addWidget(self.lbl_status)
+        main_layout.addStretch(1)
 
-        # Bindings
-        self.btn_browse_ref.Bind(wx.EVT_BUTTON, self.on_browse_ref)
-        self.btn_browse_con.Bind(wx.EVT_BUTTON, self.on_browse_con)
-        self.btn_copy_consent.Bind(wx.EVT_BUTTON, self.on_copy_consent)
-        self.btn_replicate.Bind(wx.EVT_BUTTON, self.on_replicate)
-        self.btn_copy_id.Bind(wx.EVT_BUTTON, self.on_copy_id)
+        # Connections
+        self.btn_browse_ref.clicked.connect(self.on_browse_ref)
+        self.btn_browse_con.clicked.connect(self.on_browse_con)
+        self.btn_copy_consent.clicked.connect(self.on_copy_consent)
+        self.btn_replicate.clicked.connect(self.on_replicate)
+        self.btn_copy_id.clicked.connect(self.on_copy_id)
 
-    def on_browse_ref(self, event):
-        with wx.FileDialog(
+    def on_browse_ref(self, *args):
+        path, _ = QFileDialog.getOpenFileName(
             self,
-            message="Select Reference Audio (WAV, 10-30 seconds)",
-            wildcard="WAV files (*.wav)|*.wav",
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
-        ) as dlg:
-            if dlg.ShowModal() == wx.ID_OK:
-                self.txt_ref_path.SetValue(dlg.GetPath())
-                announcer.announce(tr("announce_selected_ref_audio", filename=dlg.GetFilename()))
+            "Select Reference Audio (WAV, 10-30 seconds)",
+            str(config.output_dir),
+            "WAV files (*.wav)",
+        )
+        if path:
+            self.txt_ref_path.setText(path)
+            announcer.announce(tr("announce_selected_ref_audio", filename=Path(path).name))
 
-    def on_browse_con(self, event):
-        with wx.FileDialog(
+    def on_browse_con(self, *args):
+        path, _ = QFileDialog.getOpenFileName(
             self,
-            message="Select Consent Audio (WAV reciting phrase)",
-            wildcard="WAV files (*.wav)|*.wav",
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
-        ) as dlg:
-            if dlg.ShowModal() == wx.ID_OK:
-                self.txt_con_path.SetValue(dlg.GetPath())
-                announcer.announce(tr("announce_selected_con_audio", filename=dlg.GetFilename()))
+            "Select Consent Audio (WAV reciting phrase)",
+            str(config.output_dir),
+            "WAV files (*.wav)",
+        )
+        if path:
+            self.txt_con_path.setText(path)
+            announcer.announce(tr("announce_selected_con_audio", filename=Path(path).name))
 
-    def on_copy_consent(self, event):
-        if wx.TheClipboard.Open():
-            wx.TheClipboard.SetData(wx.TextDataObject(MANDATORY_CONSENT_TEXT))
-            wx.TheClipboard.Close()
+    def on_copy_consent(self, *args):
+        cb = QApplication.clipboard()
+        if cb is not None:
+            cb.setText(MANDATORY_CONSENT_TEXT)
             announcer.announce(tr("announce_copied_consent"))
 
-    def on_replicate(self, event):
-        name = self.txt_name.GetValue().strip()
-        ref_path = self.txt_ref_path.GetValue().strip()
-        con_path = self.txt_con_path.GetValue().strip()
-        store_stateful = (self.radio_mode.GetSelection() == 0)
+    def on_replicate(self, *args):
+        name = self.txt_name.text().strip()
+        ref_path = self.txt_ref_path.text().strip()
+        con_path = self.txt_con_path.text().strip()
+        store_stateful = (self.radio_mode.selected_index() == 0)
 
         if not name:
             announcer.announce(tr("announce_enter_voice_name"))
-            self.txt_name.SetFocus()
+            self.txt_name.setFocus()
             return
         if not ref_path:
             announcer.announce(tr("announce_select_ref_audio"))
-            self.btn_browse_ref.SetFocus()
+            self.btn_browse_ref.setFocus()
             return
         if not con_path:
             announcer.announce(tr("announce_select_con_audio"))
-            self.btn_browse_con.SetFocus()
+            self.btn_browse_con.setFocus()
             return
 
-        self.btn_replicate.Enable(False)
-        self.lbl_status.SetLabel(tr("status_replicating"))
+        self.btn_replicate.setEnabled(False)
+        self.lbl_status.setText(tr("status_replicating"))
 
         def _worker():
             try:
@@ -192,28 +235,29 @@ class VoiceReplicationPanel(wx.Panel):
                     display_name=name,
                     reference_audio_path=ref_path,
                     consent_audio_path=con_path,
-                    store=store_stateful
+                    store=store_stateful,
                 )
                 self.last_voice_id = voice_id
 
                 def _ui_update():
-                    self.btn_replicate.Enable(True)
-                    self.btn_copy_id.Enable(True)
-                    self.lbl_id.SetLabel(tr("lbl_voice_id_assigned", voice_id=voice_id))
-                    self.lbl_status.SetLabel(tr("status_replicate_success"))
+                    self.btn_replicate.setEnabled(True)
+                    self.btn_copy_id.setEnabled(True)
+                    self.lbl_id.setText(tr("lbl_voice_id_assigned", voice_id=voice_id))
+                    self.lbl_status.setText(tr("status_replicate_success"))
 
-                wx.CallAfter(_ui_update)
+                call_after(_ui_update)
             except Exception as e:
                 def _error_update():
-                    self.btn_replicate.Enable(True)
-                    self.lbl_status.SetLabel(tr("status_error", error=e))
-                wx.CallAfter(_error_update)
+                    self.btn_replicate.setEnabled(True)
+                    self.lbl_status.setText(tr("status_error", error=e))
+
+                call_after(_error_update)
 
         threading.Thread(target=_worker, daemon=True).start()
 
-    def on_copy_id(self, event):
+    def on_copy_id(self, *args):
         if self.last_voice_id:
-            if wx.TheClipboard.Open():
-                wx.TheClipboard.SetData(wx.TextDataObject(self.last_voice_id))
-                wx.TheClipboard.Close()
+            cb = QApplication.clipboard()
+            if cb is not None:
+                cb.setText(self.last_voice_id)
                 announcer.announce(tr("announce_copied_voice_id", voice_id=self.last_voice_id))

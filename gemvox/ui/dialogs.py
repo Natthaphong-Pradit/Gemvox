@@ -8,10 +8,27 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import wx
+from PySide6.QtCore import QEvent, Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QKeyEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+from gemvox.ui.accessible_text import AccessibleTextArea
 from gemvox.config import config
 from gemvox.i18n import tr
-from gemvox.core.voice_catalog import INLINE_VOCAL_TAGS, STYLE_PRESETS, get_all_style_presets
+from gemvox.core.voice_catalog import INLINE_VOCAL_TAGS, get_all_style_presets
 from gemvox.core.audio_player import audio_player
 from gemvox.core.updater import (
     REPO_URL,
@@ -20,14 +37,16 @@ from gemvox.core.updater import (
     download_and_install_update,
 )
 from gemvox.accessibility import announcer
+from gemvox.ui.help_content import HELP_SECTIONS, WELCOME_TOUR_STEPS
 from gemvox.ui.player_bar import AudioTransportBar
 from gemvox.ui.theme import (
-    style_panel,
-    style_label,
-    style_text_ctrl,
-    style_listbox,
+    StudioHeaderBanner,
+    apply_accessible,
+    call_after,
+    clean_mnemonic,
+    get_qfont,
     style_button,
-    attach_painted_header,
+    style_label,
 )
 
 
@@ -47,390 +66,427 @@ def open_output_folder():
         announcer.announce(tr("status_error", error=e))
 
 
-class InlineTagDialog(wx.Dialog):
-    """Accessible dialog to select and insert inline vocal tags (zero unlabeled child panels)."""
-    def __init__(self, parent):
-        super().__init__(parent, title=tr("dlg_tag_title"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self.selected_tag = None
-        style_panel(self, accessible_name=tr("dlg_tag_title"))
+def _open_url_safe(url: str):
+    if not QDesktopServices.openUrl(QUrl(url)):
+        webbrowser.open(url)
+
+
+class _BaseStudioDialog(QDialog):
+    """Base Universal Design dialog with Alt+<Key> mnemonic hook support."""
+
+    def __init__(self, parent: Optional[QWidget], title: str):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setAccessibleName(clean_mnemonic(title))
+        self.setModal(True)
+
+    def _alt_char(self, event: QKeyEvent) -> Optional[str]:
+        mods = event.modifiers()
+        if (mods & Qt.AltModifier) and not (mods & Qt.ControlModifier) and not (mods & Qt.ShiftModifier):
+            key = event.key()
+            if Qt.Key_A <= key <= Qt.Key_Z:
+                return chr(key)
+        return None
+
+
+class InlineTagDialog(_BaseStudioDialog):
+    """Accessible dialog to select and insert inline vocal tags."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent, tr("dlg_tag_title"))
+        self.selected_tag: Optional[str] = None
         self._init_ui()
-        self.CentreOnParent()
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(600, 480)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("dlg_tag_banner_title"),
-            subtitle=tr("dlg_tag_banner_sub"),
-            badge_text="VOCAL TAG"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("dlg_tag_banner_title"),
+                subtitle=tr("dlg_tag_banner_sub"),
+                badge_text="VOCAL TAG",
+            )
         )
 
-        info_label = wx.StaticText(
-            self,
-            label=tr("dlg_tag_info")
-        )
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(10)
+
+        info_label = QLabel(tr("dlg_tag_info"), self)
+        info_label.setWordWrap(True)
         style_label(info_label, "muted")
-        sizer.Add(info_label, 0, wx.ALL, 12)
+        body.addWidget(info_label)
 
-        # Accessible listbox
+        self.listbox = QListWidget(self)
         choices = [f"{item['tag']} - {item['label']}: {item['description']}" for item in INLINE_VOCAL_TAGS]
-        self.listbox = wx.ListBox(self, choices=choices, style=wx.LB_SINGLE)
-        style_listbox(self.listbox)
+        self.listbox.addItems(choices)
         if choices:
-            self.listbox.SetSelection(0)
-        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
-
-        # Buttons
-        btn_sizer = wx.StdDialogButtonSizer()
-        insert_btn = wx.Button(self, wx.ID_OK, label=tr("btn_insert"))
-        insert_btn.SetDefault()
-        style_button(insert_btn, "primary")
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_cancel"))
-        style_button(cancel_btn, "secondary")
-        btn_sizer.AddButton(insert_btn)
-        btn_sizer.AddButton(cancel_btn)
-        btn_sizer.Realize()
-        sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
-
-        self.SetSizer(sizer)
-        self.SetSize((580, 460))
-
-        insert_btn.Bind(wx.EVT_BUTTON, self.on_insert)
-        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_insert)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
-
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'I':
-                self.on_insert(None)
-                return
-        event.Skip()
-
-    def on_insert(self, event):
-        sel = self.listbox.GetSelection()
-        if sel != wx.NOT_FOUND:
-            self.selected_tag = INLINE_VOCAL_TAGS[sel]["tag"]
-            self.EndModal(wx.ID_OK)
-        else:
-            self.EndModal(wx.ID_CANCEL)
-
-
-class CreateCustomStyleDialog(wx.Dialog):
-    """Accessible dialog to create and save a reusable custom style preset (zero unlabeled child panels)."""
-    def __init__(self, parent, initial_style: str = ""):
-        super().__init__(
-            parent,
-            title=tr("dlg_custom_style_title"),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
+            self.listbox.setCurrentRow(0)
+        apply_accessible(
+            self.listbox,
+            name="Vocal Tags List",
+            description=tr("dlg_tag_info"),
         )
+        body.addWidget(self.listbox, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        insert_btn = QPushButton(tr("btn_insert"), self)
+        insert_btn.setDefault(True)
+        style_button(insert_btn, "primary")
+
+        cancel_btn = QPushButton(tr("btn_cancel"), self)
+        style_button(cancel_btn, "secondary")
+
+        btn_row.addWidget(insert_btn)
+        btn_row.addWidget(cancel_btn)
+        body.addLayout(btn_row)
+
+        layout.addLayout(body, 1)
+
+        insert_btn.clicked.connect(self.on_insert)
+        cancel_btn.clicked.connect(self.reject)
+        self.listbox.itemDoubleClicked.connect(lambda *_: self.on_insert())
+        self.listbox.setFocus()
+
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "I":
+            self.on_insert()
+            return
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.listbox.hasFocus():
+            self.on_insert()
+            return
+        super().keyPressEvent(event)
+
+    def on_insert(self, *args):
+        sel = self.listbox.currentRow()
+        if 0 <= sel < len(INLINE_VOCAL_TAGS):
+            self.selected_tag = INLINE_VOCAL_TAGS[sel]["tag"]
+            self.accept()
+        else:
+            self.reject()
+
+
+class CreateCustomStyleDialog(_BaseStudioDialog):
+    """Accessible dialog to create and save a reusable custom style preset."""
+
+    def __init__(self, parent: Optional[QWidget] = None, initial_style: str = ""):
+        super().__init__(parent, tr("dlg_custom_style_title"))
         self.initial_style = initial_style
-        self.created_name = None
-        self.created_style = None
-        style_panel(self, accessible_name=tr("dlg_custom_style_title"))
+        self.created_name: Optional[str] = None
+        self.created_style: Optional[str] = None
         self._init_ui()
-        self.CentreOnParent()
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(600, 340)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("dlg_custom_style_banner"),
-            subtitle=tr("dlg_custom_style_sub"),
-            badge_text="CUSTOM PRESET"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("dlg_custom_style_banner"),
+                subtitle=tr("dlg_custom_style_sub"),
+                badge_text="CUSTOM PRESET",
+            )
         )
 
-        info = wx.StaticText(
-            self,
-            label=tr("dlg_custom_style_info")
-        )
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(12)
+
+        info = QLabel(tr("dlg_custom_style_info"), self)
+        info.setWordWrap(True)
         style_label(info, "muted")
-        sizer.Add(info, 0, wx.ALL, 12)
+        body.addWidget(info)
 
-        grid = wx.FlexGridSizer(rows=2, cols=2, vgap=12, hgap=12)
-        grid.AddGrowableCol(1, 1)
+        form = QFormLayout()
+        form.setSpacing(10)
 
-        lbl_name = wx.StaticText(self, label=tr("lbl_preset_name"))
-        style_label(lbl_name)
-        self.txt_name = wx.TextCtrl(self, value="")
-        style_text_ctrl(self.txt_name)
-        grid.Add(lbl_name, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.txt_name, 1, wx.EXPAND)
+        lbl_name = QLabel(tr("lbl_preset_name"), self)
+        self.txt_name = QLineEdit(self)
+        apply_accessible(self.txt_name, name=tr("lbl_preset_name"), label=lbl_name)
+        form.addRow(lbl_name, self.txt_name)
 
-        lbl_style = wx.StaticText(self, label=tr("lbl_preset_style"))
-        style_label(lbl_style)
-        self.txt_style = wx.TextCtrl(self, value=self.initial_style)
-        style_text_ctrl(self.txt_style)
-        grid.Add(lbl_style, 0, wx.ALIGN_CENTER_VERTICAL)
-        grid.Add(self.txt_style, 1, wx.EXPAND)
+        lbl_style = QLabel(tr("lbl_preset_style"), self)
+        self.txt_style = QLineEdit(self.initial_style, self)
+        apply_accessible(self.txt_style, name=tr("lbl_preset_style"), label=lbl_style)
+        form.addRow(lbl_style, self.txt_style)
 
-        sizer.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        body.addLayout(form)
+        body.addStretch(1)
 
-        btn_sizer = wx.StdDialogButtonSizer()
-        save_btn = wx.Button(self, wx.ID_OK, label=tr("btn_save_preset"))
-        save_btn.SetDefault()
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        save_btn = QPushButton(tr("btn_save_preset"), self)
+        save_btn.setDefault(True)
         style_button(save_btn, "primary")
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_cancel"))
+
+        cancel_btn = QPushButton(tr("btn_cancel"), self)
         style_button(cancel_btn, "secondary")
-        btn_sizer.AddButton(save_btn)
-        btn_sizer.AddButton(cancel_btn)
-        btn_sizer.Realize()
-        sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
 
-        self.SetSizer(sizer)
-        self.SetSize((590, 330))
+        btn_row.addWidget(save_btn)
+        btn_row.addWidget(cancel_btn)
+        body.addLayout(btn_row)
 
-        save_btn.Bind(wx.EVT_BUTTON, self.on_save)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        layout.addLayout(body, 1)
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'N':
-                self.txt_name.SetFocus()
-                return
-            if ch == 'S':
-                self.txt_style.SetFocus()
-                return
-            if ch == 'P':
-                self.on_save(None)
-                return
-        event.Skip()
+        save_btn.clicked.connect(self.on_save)
+        cancel_btn.clicked.connect(self.reject)
+        self.txt_name.setFocus()
 
-    def on_save(self, event):
-        name = self.txt_name.GetValue().strip()
-        style = self.txt_style.GetValue().strip()
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "N":
+            self.txt_name.setFocus()
+            return
+        if ch == "S":
+            self.txt_style.setFocus()
+            return
+        if ch == "P":
+            self.on_save()
+            return
+        super().keyPressEvent(event)
+
+    def on_save(self, *args):
+        name = self.txt_name.text().strip()
+        style = self.txt_style.text().strip()
         if not name:
             announcer.announce(tr("announce_enter_preset_name"))
-            self.txt_name.SetFocus()
+            self.txt_name.setFocus()
             return
         if not style:
             announcer.announce(tr("announce_enter_preset_style"))
-            self.txt_style.SetFocus()
+            self.txt_style.setFocus()
             return
 
         config.add_custom_style(name, style)
         self.created_name = name
         self.created_style = style
         announcer.play_sound("success")
-        self.EndModal(wx.ID_OK)
+        self.accept()
 
 
-class StylePresetDialog(wx.Dialog):
-    """Accessible dialog to pick from pre-tuned emotion and custom style presets (zero unlabeled child panels)."""
-    def __init__(self, parent):
-        super().__init__(parent, title=tr("dlg_style_title"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self.selected_style = None
+class StylePresetDialog(_BaseStudioDialog):
+    """Accessible dialog to pick from pre-tuned emotion and custom style presets."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent, tr("dlg_style_title"))
+        self.selected_style: Optional[str] = None
         self.presets = []
-        style_panel(self, accessible_name=tr("dlg_style_title"))
         self._init_ui()
-        self.CentreOnParent()
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(660, 510)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("dlg_style_banner"),
-            subtitle=tr("dlg_style_sub"),
-            badge_text="STYLE STUDIO"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("dlg_style_banner"),
+                subtitle=tr("dlg_style_sub"),
+                badge_text="STYLE STUDIO",
+            )
         )
 
-        info = wx.StaticText(
-            self,
-            label=tr("dlg_style_info")
-        )
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(10)
+
+        info = QLabel(tr("dlg_style_info"), self)
+        info.setWordWrap(True)
         style_label(info, "muted")
-        sizer.Add(info, 0, wx.ALL, 12)
+        body.addWidget(info)
 
-        self.listbox = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
-        style_listbox(self.listbox)
-        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        self.listbox = QListWidget(self)
+        apply_accessible(
+            self.listbox,
+            name="Style Presets List",
+            description=tr("dlg_style_info"),
+        )
+        body.addWidget(self.listbox, 1)
 
-        action_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_create_custom = wx.Button(self, label=tr("btn_create_style"))
-        self.btn_delete_custom = wx.Button(self, label=tr("btn_delete_custom"))
+        action_row = QHBoxLayout()
+        self.btn_create_custom = QPushButton(tr("btn_create_style"), self)
         style_button(self.btn_create_custom, "gold")
+
+        self.btn_delete_custom = QPushButton(tr("btn_delete_custom"), self)
         style_button(self.btn_delete_custom, "danger")
-        action_sizer.Add(self.btn_create_custom, 0, wx.RIGHT, 8)
-        action_sizer.Add(self.btn_delete_custom, 0)
-        sizer.Add(action_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
-        btn_sizer = wx.StdDialogButtonSizer()
-        apply_btn = wx.Button(self, wx.ID_OK, label=tr("btn_apply_style"))
-        apply_btn.SetDefault()
+        action_row.addWidget(self.btn_create_custom)
+        action_row.addWidget(self.btn_delete_custom)
+        action_row.addStretch(1)
+        body.addLayout(action_row)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        apply_btn = QPushButton(tr("btn_apply_style"), self)
+        apply_btn.setDefault(True)
         style_button(apply_btn, "primary")
-        cancel_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_cancel"))
-        style_button(cancel_btn, "secondary")
-        btn_sizer.AddButton(apply_btn)
-        btn_sizer.AddButton(cancel_btn)
-        btn_sizer.Realize()
-        sizer.Add(btn_sizer, 0, wx.ALIGN_RIGHT | wx.ALL, 12)
 
-        self.SetSizer(sizer)
-        self.SetSize((640, 490))
+        cancel_btn = QPushButton(tr("btn_cancel"), self)
+        style_button(cancel_btn, "secondary")
+
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(cancel_btn)
+        body.addLayout(btn_row)
+
+        layout.addLayout(body, 1)
 
         self.refresh_presets()
 
-        apply_btn.Bind(wx.EVT_BUTTON, self.on_apply)
-        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_apply)
-        self.listbox.Bind(wx.EVT_LISTBOX, self.on_selection_changed)
-        self.btn_create_custom.Bind(wx.EVT_BUTTON, self.on_create_custom)
-        self.btn_delete_custom.Bind(wx.EVT_BUTTON, self.on_delete_custom)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        apply_btn.clicked.connect(self.on_apply)
+        cancel_btn.clicked.connect(self.reject)
+        self.listbox.itemDoubleClicked.connect(lambda *_: self.on_apply())
+        self.listbox.currentRowChanged.connect(lambda *_: self._update_delete_button())
+        self.btn_create_custom.clicked.connect(self.on_create_custom)
+        self.btn_delete_custom.clicked.connect(self.on_delete_custom)
+        self.listbox.setFocus()
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'C':
-                self.on_create_custom(None)
-                return
-            if ch == 'D' and self.btn_delete_custom.IsEnabled():
-                self.on_delete_custom(None)
-                return
-            if ch == 'A':
-                self.on_apply(None)
-                return
-        event.Skip()
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "C":
+            self.on_create_custom()
+            return
+        if ch == "D" and self.btn_delete_custom.isEnabled():
+            self.on_delete_custom()
+            return
+        if ch == "A":
+            self.on_apply()
+            return
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and self.listbox.hasFocus():
+            self.on_apply()
+            return
+        super().keyPressEvent(event)
 
-    def refresh_presets(self, select_name: str = None):
+    def refresh_presets(self, select_name: Optional[str] = None):
         self.presets = get_all_style_presets()
-        choices = []
+        self.listbox.clear()
         sel_idx = 0
         for idx, item in enumerate(self.presets):
             prefix = "[Custom] " if item.get("is_custom") else ""
-            choices.append(f"{prefix}{item['name']} -> \"{item['style']}\"")
+            self.listbox.addItem(f"{prefix}{item['name']} -> \"{item['style']}\"")
             if select_name and item["name"].lower() == select_name.lower():
                 sel_idx = idx
-        self.listbox.Set(choices)
-        if choices:
-            self.listbox.SetSelection(sel_idx)
+        if self.presets:
+            self.listbox.setCurrentRow(sel_idx)
         self._update_delete_button()
 
     def _update_delete_button(self):
-        sel = self.listbox.GetSelection()
-        is_custom = (sel != wx.NOT_FOUND and sel < len(self.presets) and bool(self.presets[sel].get("is_custom")))
-        self.btn_delete_custom.Enable(is_custom)
+        sel = self.listbox.currentRow()
+        is_custom = 0 <= sel < len(self.presets) and bool(self.presets[sel].get("is_custom"))
+        self.btn_delete_custom.setEnabled(is_custom)
 
-    def on_selection_changed(self, event):
-        self._update_delete_button()
-        event.Skip()
-
-    def on_create_custom(self, event):
+    def on_create_custom(self, *args):
         dlg = CreateCustomStyleDialog(self)
-        if dlg.ShowModal() == wx.ID_OK and dlg.created_name:
+        if dlg.exec() == QDialog.Accepted and dlg.created_name:
             self.refresh_presets(select_name=dlg.created_name)
-            self.listbox.SetFocus()
+            self.listbox.setFocus()
             announcer.announce(tr("announce_created_custom_style", name=dlg.created_name))
-        dlg.Destroy()
 
-    def on_delete_custom(self, event):
-        sel = self.listbox.GetSelection()
-        if sel != wx.NOT_FOUND and sel < len(self.presets) and self.presets[sel].get("is_custom"):
+    def on_delete_custom(self, *args):
+        sel = self.listbox.currentRow()
+        if 0 <= sel < len(self.presets) and self.presets[sel].get("is_custom"):
             name = self.presets[sel]["name"]
             config.remove_custom_style(name)
             self.refresh_presets()
-            self.listbox.SetFocus()
+            self.listbox.setFocus()
             announcer.announce(tr("announce_deleted_custom_style", name=name))
 
-    def on_apply(self, event):
-        sel = self.listbox.GetSelection()
-        if sel != wx.NOT_FOUND and sel < len(self.presets):
+    def on_apply(self, *args):
+        sel = self.listbox.currentRow()
+        if 0 <= sel < len(self.presets):
             self.selected_style = self.presets[sel]["style"]
-            self.EndModal(wx.ID_OK)
+            self.accept()
         else:
-            self.EndModal(wx.ID_CANCEL)
+            self.reject()
 
 
-class GenerationHistoryDialog(wx.Dialog):
-    """
-    Accessible dialog for browsing, replaying, exporting, and managing generated WAV files
-    in the output folder (zero unlabeled child panels).
-    """
-    def __init__(self, parent):
-        super().__init__(
-            parent,
-            title=tr("dlg_history_title"),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        )
-        self.files_data = []
-        style_panel(self, accessible_name=tr("dlg_history_title"))
+class GenerationHistoryDialog(_BaseStudioDialog):
+    """Accessible dialog for browsing, replaying, exporting, and managing generated WAV files."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent, tr("dlg_history_title"))
+        self.files_data: list[Path] = []
         self._init_ui()
         self.refresh_history(announce=False)
-        self.CentreOnParent()
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(800, 600)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("dlg_history_banner"),
-            subtitle=tr("dlg_history_sub"),
-            badge_text="AUDIO HISTORY"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("dlg_history_banner"),
+                subtitle=tr("dlg_history_sub"),
+                badge_text="AUDIO HISTORY",
+            )
         )
 
-        info = wx.StaticText(self, label=tr("dlg_history_info"))
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(10)
+
+        info = QLabel(tr("dlg_history_info"), self)
+        info.setWordWrap(True)
         style_label(info, "muted")
-        sizer.Add(info, 0, wx.ALL, 12)
+        body.addWidget(info)
 
-        lbl_list = wx.StaticText(self, label=tr("lbl_history_list"))
+        lbl_list = QLabel(tr("lbl_history_list"), self)
         style_label(lbl_list, "section")
-        sizer.Add(lbl_list, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        body.addWidget(lbl_list)
 
-        self.listbox = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
-        style_listbox(self.listbox)
-        sizer.Add(self.listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.listbox = QListWidget(self)
+        apply_accessible(self.listbox, name=tr("lbl_history_list"), label=lbl_list)
+        body.addWidget(self.listbox, 1)
 
-        # Studio Audio Player & Transport Deck inside History Dialog
         self.player_bar = AudioTransportBar(
             self,
-            get_audio_bytes_cb=self._read_selected_wav_bytes
+            get_audio_bytes_cb=self._read_selected_wav_bytes,
         )
         self.btn_play = self.player_bar.btn_play
         self.btn_stop = self.player_bar.btn_stop
-        sizer.Add(self.player_bar.sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        body.addWidget(self.player_bar)
 
-        # Action bar
-        act_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_save_as = wx.Button(self, label=tr("btn_hist_save_as"))
-        self.btn_delete = wx.Button(self, label=tr("btn_hist_delete"))
-        self.btn_open_folder = wx.Button(self, label=tr("btn_hist_open_folder"))
-        self.btn_refresh = wx.Button(self, label=tr("btn_hist_refresh"))
+        act_row = QHBoxLayout()
+        self.btn_save_as = QPushButton(tr("btn_hist_save_as"), self)
+        self.btn_delete = QPushButton(tr("btn_hist_delete"), self)
+        self.btn_open_folder = QPushButton(tr("btn_hist_open_folder"), self)
+        self.btn_refresh = QPushButton(tr("btn_hist_refresh"), self)
+        close_btn = QPushButton(tr("btn_close"), self)
 
         style_button(self.btn_save_as, "gold")
         style_button(self.btn_delete, "danger")
         style_button(self.btn_open_folder, "secondary")
         style_button(self.btn_refresh, "secondary")
-
-        act_sizer.Add(self.btn_save_as, 0, wx.RIGHT, 8)
-        act_sizer.Add(self.btn_delete, 0, wx.RIGHT, 8)
-        act_sizer.Add(self.btn_open_folder, 0, wx.RIGHT, 8)
-        act_sizer.Add(self.btn_refresh, 0)
-        act_sizer.AddStretchSpacer(1)
-        close_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
         style_button(close_btn, "primary")
-        act_sizer.Add(close_btn, 0)
-        sizer.Add(act_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
-        self.SetSizer(sizer)
-        self.SetSize((780, 580))
+        act_row.addWidget(self.btn_save_as)
+        act_row.addWidget(self.btn_delete)
+        act_row.addWidget(self.btn_open_folder)
+        act_row.addWidget(self.btn_refresh)
+        act_row.addStretch(1)
+        act_row.addWidget(close_btn)
+        body.addLayout(act_row)
 
-        self.btn_save_as.Bind(wx.EVT_BUTTON, self.on_save_as)
-        self.btn_delete.Bind(wx.EVT_BUTTON, self.on_delete)
-        self.btn_open_folder.Bind(wx.EVT_BUTTON, lambda e: open_output_folder())
-        self.btn_refresh.Bind(wx.EVT_BUTTON, lambda e: self.refresh_history(announce=True))
-        self.listbox.Bind(wx.EVT_LISTBOX, self.on_select_item)
-        self.listbox.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_selected)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        layout.addLayout(body, 1)
+
+        self.btn_save_as.clicked.connect(self.on_save_as)
+        self.btn_delete.clicked.connect(self.on_delete)
+        self.btn_open_folder.clicked.connect(lambda *_: open_output_folder())
+        self.btn_refresh.clicked.connect(lambda *_: self.refresh_history(announce=True))
+        close_btn.clicked.connect(self.reject)
+        self.listbox.currentRowChanged.connect(self.on_select_item)
+        self.listbox.itemDoubleClicked.connect(lambda *_: self.on_play_selected())
+
+        self.listbox.setFocus()
 
     def _read_selected_wav_bytes(self) -> Optional[bytes]:
         target = self._get_selected_file()
@@ -441,14 +497,13 @@ class GenerationHistoryDialog(wx.Dialog):
                 return None
         return None
 
-    def on_select_item(self, event):
+    def on_select_item(self, *args):
         if not audio_player.is_active:
             data = self._read_selected_wav_bytes()
             if data:
                 self.player_bar.set_audio_ready(True, data)
-        event.Skip()
 
-    def on_play_selected(self, event=None):
+    def on_play_selected(self, *args):
         data = self._read_selected_wav_bytes()
         if data:
             audio_player.play_wav_bytes(data, announce_on_start=True)
@@ -466,6 +521,7 @@ class GenerationHistoryDialog(wx.Dialog):
 
     def refresh_history(self, announce: bool = False):
         self.files_data = []
+        self.listbox.clear()
         out_dir = config.output_dir
         wav_files = []
         try:
@@ -473,7 +529,7 @@ class GenerationHistoryDialog(wx.Dialog):
                 wav_files = sorted(
                     out_dir.glob("*.wav"),
                     key=lambda p: p.stat().st_mtime,
-                    reverse=True
+                    reverse=True,
                 )
         except Exception:
             wav_files = []
@@ -491,217 +547,204 @@ class GenerationHistoryDialog(wx.Dialog):
                 pass
 
         if choices:
-            self.listbox.Set(choices)
-            self.listbox.SetSelection(0)
+            self.listbox.addItems(choices)
+            self.listbox.setCurrentRow(0)
             self.player_bar.set_audio_ready(True, self._read_selected_wav_bytes())
-            self.btn_save_as.Enable(True)
-            self.btn_delete.Enable(True)
+            self.btn_save_as.setEnabled(True)
+            self.btn_delete.setEnabled(True)
         else:
-            self.listbox.Set([tr("msg_history_empty")])
-            self.listbox.SetSelection(0)
+            self.listbox.addItem(tr("msg_history_empty"))
+            self.listbox.setCurrentRow(0)
             self.player_bar.set_audio_ready(False)
-            self.btn_save_as.Enable(False)
-            self.btn_delete.Enable(False)
+            self.btn_save_as.setEnabled(False)
+            self.btn_delete.setEnabled(False)
 
         if announce:
             announcer.announce(tr("announce_history_count", count=len(self.files_data)))
 
     def _get_selected_file(self) -> Optional[Path]:
-        sel = self.listbox.GetSelection()
-        if sel != wx.NOT_FOUND and sel < len(self.files_data):
+        sel = self.listbox.currentRow()
+        if 0 <= sel < len(self.files_data):
             return self.files_data[sel]
         return None
 
-    def on_play_stop(self, event=None):
+    def on_play_stop(self, *args):
         self.player_bar.on_play_pause()
 
-    def on_save_as(self, event=None):
+    def on_save_as(self, *args):
         target = self._get_selected_file()
         if not target or not target.is_file():
             return
-        with wx.FileDialog(
+        dest, _ = QFileDialog.getSaveFileName(
             self,
-            message=tr("menu_save_audio_help"),
-            defaultDir=str(config.output_dir),
-            defaultFile=target.name,
-            wildcard="WAV Audio (*.wav)|*.wav",
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
-        ) as dlg:
-            if dlg.ShowModal() == wx.ID_OK:
-                dest = dlg.GetPath()
-                try:
-                    shutil.copy2(target, dest)
-                    announcer.announce(tr("announce_audio_saved", path=dest))
-                except Exception as e:
-                    announcer.announce(tr("status_error", error=e))
+            tr("menu_save_audio_help"),
+            str(config.output_dir / target.name),
+            "WAV Audio (*.wav)",
+        )
+        if dest:
+            try:
+                shutil.copy2(target, dest)
+                announcer.announce(tr("announce_audio_saved", path=dest))
+            except Exception as e:
+                announcer.announce(tr("status_error", error=e))
 
-    def on_delete(self, event=None):
+    def on_delete(self, *args):
         target = self._get_selected_file()
         if not target or not target.is_file():
             return
-        resp = wx.MessageBox(
-            tr("confirm_delete_audio_msg", filename=target.name),
+        resp = QMessageBox.warning(
+            self,
             tr("confirm_delete_audio_title"),
-            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
-            self
+            tr("confirm_delete_audio_msg", filename=target.name),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
         )
-        if resp == wx.YES:
+        if resp == QMessageBox.Yes:
             try:
                 if audio_player.is_active:
                     audio_player.stop()
                 target.unlink()
                 announcer.announce(tr("announce_history_deleted", filename=target.name))
                 self.refresh_history(announce=False)
-                self.listbox.SetFocus()
+                self.listbox.setFocus()
             except Exception as e:
                 announcer.announce(tr("status_error", error=e))
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        alt = event.AltDown()
-        ctrl = event.ControlDown()
-        shift = event.ShiftDown()
-
-        if not alt and not ctrl and not shift:
-            if key == wx.WXK_RETURN and wx.Window.FindFocus() == self.listbox:
-                self.on_play_selected(None)
+    def keyPressEvent(self, event: QKeyEvent):
+        mods = event.modifiers()
+        key = event.key()
+        if mods == Qt.NoModifier:
+            if key in (Qt.Key_Return, Qt.Key_Enter) and self.listbox.hasFocus():
+                self.on_play_selected()
                 return
-            if key == wx.WXK_DELETE and wx.Window.FindFocus() == self.listbox:
-                self.on_delete(None)
+            if key == Qt.Key_Delete and self.listbox.hasFocus():
+                self.on_delete()
                 return
-            if key == wx.WXK_F7:
+            if key == Qt.Key_F7:
                 audio_player.skip(-5.0, announce=True)
                 return
-            if key == wx.WXK_F8:
+            if key == Qt.Key_F8:
                 audio_player.skip(5.0, announce=True)
                 return
-            if key == wx.WXK_F9:
+            if key == Qt.Key_F9:
                 audio_player.change_volume(-10, announce=True)
                 return
-            if key == wx.WXK_F10:
+            if key == Qt.Key_F10:
                 audio_player.change_volume(10, announce=True)
                 return
-
-        if ctrl and not alt and not shift and key in (ord('l'), ord('L')):
+        if mods == Qt.ControlModifier and key == Qt.Key_L:
             audio_player.toggle_loop(announce=True)
             return
-
-        if alt and not ctrl and not shift and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'P' and self.btn_play.IsEnabled():
-                self.on_play_stop(None)
-                return
-            if ch == 'Q':
-                audio_player.stop(announce=True)
-                return
-            if ch == 'S' and self.btn_save_as.IsEnabled():
-                self.on_save_as(None)
-                return
-            if ch == 'D' and self.btn_delete.IsEnabled():
-                self.on_delete(None)
-                return
-            if ch == 'L':
-                open_output_folder()
-                return
-            if ch == 'R':
-                self.refresh_history(announce=True)
-                return
-            if ch == 'G':
-                self.listbox.SetFocus()
-                return
-            if ch == 'C':
-                self.EndModal(wx.ID_CANCEL)
-                return
-
-        event.Skip()
+        ch = self._alt_char(event)
+        if ch == "P" and self.btn_play.isEnabled():
+            self.on_play_stop()
+            return
+        if ch == "Q":
+            audio_player.stop(announce=True)
+            return
+        if ch == "S" and self.btn_save_as.isEnabled():
+            self.on_save_as()
+            return
+        if ch == "D" and self.btn_delete.isEnabled():
+            self.on_delete()
+            return
+        if ch == "L":
+            open_output_folder()
+            return
+        if ch == "R":
+            self.refresh_history(announce=True)
+            return
+        if ch == "G":
+            self.listbox.setFocus()
+            return
+        if ch == "C":
+            self.reject()
+            return
+        super().keyPressEvent(event)
 
 
-class UpdateDialog(wx.Dialog):
-    """
-    Accessible Direct GitHub Auto-Updater Dialog (Ctrl+U).
-    Connects directly to https://github.com/Natthaphong-Pradit/Gemvox,
-    checks for newer releases or main branch updates, downloads the appropriate
-    package (Standalone EXE, Portable ZIP, or Source Archive), and installs/relaunches
-    Gemvox in place without requiring the user to manually extract files.
-    """
-    def __init__(self, parent, initial_info: Optional[UpdateInfo] = None):
-        super().__init__(
-            parent,
-            title=tr("dlg_update_title"),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        )
+class UpdateDialog(_BaseStudioDialog):
+    """Accessible Direct GitHub Auto-Updater Dialog (Ctrl+U)."""
+
+    def __init__(self, parent: Optional[QWidget] = None, initial_info: Optional[UpdateInfo] = None):
+        super().__init__(parent, tr("dlg_update_title"))
         self.update_info: Optional[UpdateInfo] = None
         self._is_busy = False
         self._last_announced_milestone = -1
-        style_panel(self, accessible_name=tr("dlg_update_title"))
+        self._alive = True
+        self.destroyed.connect(self._on_destroyed)
         self._init_ui()
-        self.CentreOnParent()
         if initial_info is not None:
-            wx.CallAfter(self._on_check_completed, initial_info)
+            call_after(self._on_check_completed, initial_info)
         else:
-            wx.CallAfter(self.start_check)
+            call_after(self.start_check)
+
+    def _on_destroyed(self, *args):
+        self._alive = False
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(760, 520)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("dlg_update_banner"),
-            subtitle=tr("dlg_update_sub"),
-            badge_text="GITHUB UPDATER"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("dlg_update_banner"),
+                subtitle=tr("dlg_update_sub"),
+                badge_text="GITHUB UPDATER",
+            )
         )
 
-        # Status text
-        self.lbl_status = wx.StaticText(self, label=tr("upd_checking"))
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(10)
+
+        self.lbl_status = QLabel(tr("upd_checking"), self)
         style_label(self.lbl_status, "status")
-        sizer.Add(self.lbl_status, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 14)
+        body.addWidget(self.lbl_status)
 
-        # Progress bar
-        self.gauge = wx.Gauge(self, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
-        self.gauge.SetValue(0)
-        sizer.Add(self.gauge, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.gauge = QProgressBar(self)
+        self.gauge.setRange(0, 100)
+        self.gauge.setValue(0)
+        apply_accessible(self.gauge, name="Update Download Progress")
+        body.addWidget(self.gauge)
 
-        # Release notes & update details
-        lbl_notes = wx.StaticText(self, label=tr("lbl_upd_notes"))
+        lbl_notes = QLabel(tr("lbl_upd_notes"), self)
         style_label(lbl_notes, "section")
-        sizer.Add(lbl_notes, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        body.addWidget(lbl_notes)
 
-        self.txt_notes = wx.TextCtrl(
-            self,
-            value=tr("upd_checking"),
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2
-        )
-        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
-        sizer.Add(self.txt_notes, 1, wx.EXPAND | wx.ALL, 12)
+        self.txt_notes = AccessibleTextArea(tr("upd_checking"), self, read_only=True)
+        self.txt_notes.setTabChangesFocus(True)
+        self.txt_notes.setFont(get_qfont(10, mono=True))
+        apply_accessible(self.txt_notes, name=tr("lbl_upd_notes"), label=lbl_notes)
+        body.addWidget(self.txt_notes, 1)
 
-        # Action bar
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_install = wx.Button(self, label=tr("btn_upd_install"))
-        self.btn_install.Enable(False)
-        self.btn_check = wx.Button(self, label=tr("btn_upd_check"))
-        self.btn_open_repo = wx.Button(self, label=tr("btn_upd_open_repo"))
-        self.btn_close = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
+        btn_row = QHBoxLayout()
+        self.btn_install = QPushButton(tr("btn_upd_install"), self)
+        self.btn_install.setEnabled(False)
+        self.btn_check = QPushButton(tr("btn_upd_check"), self)
+        self.btn_open_repo = QPushButton(tr("btn_upd_open_repo"), self)
+        self.btn_close = QPushButton(tr("btn_close"), self)
 
         style_button(self.btn_install, "gold")
         style_button(self.btn_check, "secondary")
         style_button(self.btn_open_repo, "secondary")
         style_button(self.btn_close, "primary")
 
-        btn_sizer.Add(self.btn_install, 0, wx.RIGHT, 8)
-        btn_sizer.Add(self.btn_check, 0, wx.RIGHT, 8)
-        btn_sizer.Add(self.btn_open_repo, 0, wx.RIGHT, 8)
-        btn_sizer.AddStretchSpacer(1)
-        btn_sizer.Add(self.btn_close, 0)
-        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 14)
+        btn_row.addWidget(self.btn_install)
+        btn_row.addWidget(self.btn_check)
+        btn_row.addWidget(self.btn_open_repo)
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_close)
+        body.addLayout(btn_row)
 
-        self.SetSizer(sizer)
-        self.SetSize((760, 500))
+        layout.addLayout(body, 1)
 
-        self.btn_install.Bind(wx.EVT_BUTTON, self.on_install)
-        self.btn_check.Bind(wx.EVT_BUTTON, lambda e: self.start_check())
-        self.btn_open_repo.Bind(wx.EVT_BUTTON, self.on_open_repo)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.btn_install.clicked.connect(self.on_install)
+        self.btn_check.clicked.connect(lambda *_: self.start_check())
+        self.btn_open_repo.clicked.connect(self.on_open_repo)
+        self.btn_close.clicked.connect(self.reject)
 
     def _mode_display_name(self, mode: str) -> str:
         if mode == "standalone_exe":
@@ -711,42 +754,41 @@ class UpdateDialog(wx.Dialog):
         return tr("upd_mode_source")
 
     def start_check(self):
-        if self._is_busy:
+        if self._is_busy or not self._alive:
             return
         self._is_busy = True
-        self.btn_install.Enable(False)
-        self.btn_check.Enable(False)
-        self.gauge.Pulse()
-        self.lbl_status.SetLabel(tr("upd_checking"))
-        self.txt_notes.SetValue(
+        self.btn_install.setEnabled(False)
+        self.btn_check.setEnabled(False)
+        self.gauge.setRange(0, 0)  # Indeterminate pulse
+        self.lbl_status.setText(tr("upd_checking"))
+        self.txt_notes.setPlainText(
             f"Repository : {REPO_URL}\n"
             f"Status     : {tr('upd_checking')}\n"
         )
-        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
         announcer.announce(tr("upd_checking"))
 
         def _worker():
             info = check_for_updates()
-            wx.CallAfter(self._on_check_completed, info)
+            call_after(self._on_check_completed, info)
 
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_check_completed(self, info: UpdateInfo):
-        if not self or not self.IsShown():
+        if not self._alive:
             return
         self._is_busy = False
         self.update_info = info
-        self.gauge.SetValue(0)
-        self.btn_check.Enable(True)
+        self.gauge.setRange(0, 100)
+        self.gauge.setValue(0)
+        self.btn_check.setEnabled(True)
 
         if info.error:
             status_msg = tr("upd_error_status", error=info.error)
-            self.lbl_status.SetLabel(status_msg)
-            self.txt_notes.SetValue(
+            self.lbl_status.setText(status_msg)
+            self.txt_notes.setPlainText(
                 f"Repository : {REPO_URL}\n"
                 f"Error      : {info.error}\n"
             )
-            style_text_ctrl(self.txt_notes, multiline=True, mono=True)
             announcer.play_sound("error")
             announcer.announce(tr("upd_error_announce", error=info.error))
             return
@@ -759,9 +801,10 @@ class UpdateDialog(wx.Dialog):
                 current=info.current_version,
                 mode=mode_label,
             )
-            self.btn_install.SetLabel(tr("btn_upd_install"))
-            self.btn_install.Enable(True)
-            self.btn_install.SetDefault()
+            self.btn_install.setText(tr("btn_upd_install"))
+            style_button(self.btn_install, "gold")
+            self.btn_install.setEnabled(True)
+            self.btn_install.setDefault(True)
             announcer.play_sound("complete")
             announcer.announce(tr("upd_available_announce", latest=info.latest_version))
         else:
@@ -770,12 +813,13 @@ class UpdateDialog(wx.Dialog):
                 current=info.current_version,
                 mode=mode_label,
             )
-            self.btn_install.SetLabel(tr("btn_upd_reinstall"))
-            self.btn_install.Enable(bool(info.download_url))
+            self.btn_install.setText(tr("btn_upd_reinstall"))
+            style_button(self.btn_install, "gold")
+            self.btn_install.setEnabled(bool(info.download_url))
             announcer.play_sound("success")
             announcer.announce(tr("upd_up_to_date_announce", current=info.current_version))
 
-        self.lbl_status.SetLabel(status_msg)
+        self.lbl_status.setText(status_msg)
         details = (
             f"====================================================================\n"
             f"GEMVOX DIRECT GITHUB AUTO-UPDATER\n"
@@ -790,296 +834,178 @@ class UpdateDialog(wx.Dialog):
             f"RELEASE NOTES & DETAILS:\n"
             f"{info.release_notes}\n"
         )
-        self.txt_notes.SetValue(details)
-        style_text_ctrl(self.txt_notes, multiline=True, mono=True)
-        self.txt_notes.SetInsertionPoint(0)
+        self.txt_notes.setPlainText(details)
+        self.txt_notes.scroll_to_top()
         if info.is_newer:
-            self.btn_install.SetFocus()
+            self.btn_install.setFocus()
         else:
-            self.txt_notes.SetFocus()
-        self.Layout()
+            self.txt_notes.setFocus()
 
-    def on_install(self, event=None):
+    def on_install(self, *args):
         if self._is_busy or not self.update_info or not self.update_info.download_url:
             return
         self._is_busy = True
         self._last_announced_milestone = -1
-        self.btn_install.Enable(False)
-        self.btn_check.Enable(False)
-        self.btn_close.Enable(False)
-        self.gauge.SetValue(0)
+        self.btn_install.setEnabled(False)
+        self.btn_check.setEnabled(False)
+        self.btn_close.setEnabled(False)
+        self.gauge.setRange(0, 100)
+        self.gauge.setValue(0)
         announcer.play_sound("start")
         announcer.announce(tr("upd_downloading_announce"))
 
         def _progress(percent: int, stage: str):
             def _ui():
-                if not self or not self.IsShown():
+                if not self._alive:
                     return
                 pct = max(0, min(100, int(percent)))
-                self.gauge.SetValue(pct)
-                self.lbl_status.SetLabel(tr("upd_downloading_status", stage=stage, percent=pct))
+                self.gauge.setValue(pct)
+                self.lbl_status.setText(tr("upd_downloading_status", stage=stage, percent=pct))
                 milestone = (pct // 25) * 25
                 if milestone in (25, 50, 75, 100) and milestone > self._last_announced_milestone:
                     self._last_announced_milestone = milestone
                     announcer.announce(f"{pct}%", interrupt=False)
-            wx.CallAfter(_ui)
+
+            call_after(_ui)
 
         def _worker():
             ok, msg = download_and_install_update(self.update_info, progress_callback=_progress)
-            wx.CallAfter(self._on_install_completed, ok, msg)
+            call_after(self._on_install_completed, ok, msg)
 
         threading.Thread(target=_worker, daemon=True).start()
 
     def _on_install_completed(self, ok: bool, msg: str):
-        if not self:
+        if not self._alive:
             return
         self._is_busy = False
         if not ok:
-            self.btn_install.Enable(True)
-            self.btn_check.Enable(True)
-            self.btn_close.Enable(True)
+            self.btn_install.setEnabled(True)
+            self.btn_check.setEnabled(True)
+            self.btn_close.setEnabled(True)
             err_text = tr("upd_error_status", error=msg)
-            self.lbl_status.SetLabel(err_text)
+            self.lbl_status.setText(err_text)
             announcer.play_sound("error")
             announcer.announce(tr("upd_error_announce", error=msg))
             return
 
-        self.gauge.SetValue(100)
-        self.lbl_status.SetLabel(msg)
+        self.gauge.setValue(100)
+        self.lbl_status.setText(msg)
         announcer.play_sound("success")
         announcer.announce(tr("upd_installing_announce"))
-
-        parent = self.GetParent()
-        top_win = wx.GetTopLevelParent(parent) if parent else None
-        self.EndModal(wx.ID_OK)
-        if top_win:
-            top_win.Destroy()
-        app = wx.GetApp()
+        self.accept()
+        app = QApplication.instance()
         if app:
-            app.ExitMainLoop()
+            app.quit()
 
-    def on_open_repo(self, event=None):
+    def on_open_repo(self, *args):
         target_url = REPO_URL
         if self.update_info and self.update_info.html_url:
             target_url = self.update_info.html_url
-        if not wx.LaunchDefaultBrowser(target_url):
-            webbrowser.open(target_url)
+        _open_url_safe(target_url)
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'N':
-                self.txt_notes.SetFocus()
-                return
-            if ch == 'I' and self.btn_install.IsEnabled():
-                self.on_install(None)
-                return
-            if ch == 'G' and self.btn_check.IsEnabled():
-                self.start_check()
-                return
-            if ch == 'R':
-                self.on_open_repo(None)
-                return
-            if ch == 'C' and self.btn_close.IsEnabled():
-                self.EndModal(wx.ID_CANCEL)
-                return
-        event.Skip()
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "N":
+            self.txt_notes.setFocus()
+            return
+        if ch == "I" and self.btn_install.isEnabled():
+            self.on_install()
+            return
+        if ch == "G" and self.btn_check.isEnabled():
+            self.start_check()
+            return
+        if ch == "R":
+            self.on_open_repo()
+            return
+        if ch == "C" and self.btn_close.isEnabled():
+            self.reject()
+            return
+        super().keyPressEvent(event)
 
 
-# ========================================================================
-# WELCOME SCREEN & FIRST-RUN GUIDED SETUP TOUR
-# ========================================================================
-WELCOME_TOUR_STEPS = {
-    "en": [
-        {
-            "title": "Welcome to Gemvox Studio",
-            "body": (
-                "Welcome to Gemvox — your accessible desktop studio for Google Gemini 3.8 Flash Text-to-Speech.\n\n"
-                "Gemvox is engineered from the ground up for both blind/visually impaired creators (NVDA, JAWS, Narrator) "
-                "and sighted audio producers.\n\n"
-                "KEY HIGHLIGHTS:\n"
-                "  1. Direct Active Screen Reader Output: Zero SAPI 5 voice collisions.\n"
-                "  2. 100% Keyboard-Driven: Fast Alt+Mnemonics and Ctrl+1..6 tab switching.\n"
-                "  3. Complete Gemini 3.8 Flash TTS Suite: Single Speaker, Multi-Speaker Dialogue, "
-                "Voice Design, Voice Replication, and 30+ Studio Voices.\n\n"
-                "Press 'Next Step (Alt+N)' to learn how to set up your API Key in 1 minute, or press "
-                "'Go to Settings Now (Alt+G)' to configure your studio immediately."
-            )
-        },
-        {
-            "title": "Step 1: Configure Your Gemini API Key & Language",
-            "body": (
-                "Before generating speech, Gemvox requires a Google Gemini API Key:\n\n"
-                "HOW TO SET UP YOUR API KEY:\n"
-                "  1. Click 'Go to Settings Now (Alt+G)' below (or press Ctrl+6 anytime).\n"
-                "  2. In the Settings tab, press 'Get API Key (Alt+G)' to open Google AI Studio in your web browser.\n"
-                "  3. Copy your API key and paste it into the 'Gemini API Key (Alt+K)' box.\n"
-                "  4. Optional: Press 'Test Connection (Alt+C)' to verify your key.\n"
-                "  5. Choose your preferred Interface Language: English (Default) or Thai (ภาษาไทย).\n"
-                "  6. Press 'Save Settings (Alt+S)'. Gemvox will offer to restart so your new settings take full effect.\n\n"
-                "Note: Your settings are stored persistently, so future updates will never erase your configuration."
-            )
-        },
-        {
-            "title": "Step 2: Navigating Tabs & Generating Your First Audio",
-            "body": (
-                "Once your API key is saved, creating studio-quality speech is effortless:\n\n"
-                "HOW TO GENERATE SPEECH:\n"
-                "  1. Press Ctrl+1 for Single Speaker TTS or Ctrl+2 for Multi-Speaker Dialogue (or press Alt+T to open the Tabs menu).\n"
-                "  2. When switching tabs with Left/Right arrows or Ctrl+1..6, focus stays locked on the Tab header "
-                "until you press Tab (or a direct shortcut like Alt+X) to enter the workspace.\n"
-                "  3. In Single Speaker TTS, press Alt+X to focus the text box and type your script, optionally press Alt+I "
-                "to insert vocal tags (<sigh>, <laugh>, <short pause>), or press Alt+B to pick a delivery style.\n"
-                "  4. Press Ctrl+Enter (or Alt+G) to synthesize speech!\n"
-                "  5. Press Alt+P to Play/Stop audio, and Ctrl+S to save as a 24kHz WAV file.\n"
-                "  6. Press F1 at any time to open the systematic step-by-step User Guide."
-            )
-        }
-    ],
-    "th": [
-        {
-            "title": "ยินดีต้อนรับสู่ Gemvox Studio",
-            "body": (
-                "ยินดีต้อนรับสู่ Gemvox — สตูดิโอสังเคราะห์เสียงพูด AI ขับเคลื่อนด้วย Google Gemini 3.8 Flash TTS\n\n"
-                "โปรแกรมนี้ได้รับการออกแบบให้เข้าถึงได้อย่างสมบูรณ์แบบสำหรับผู้ใช้ Screen Reader (NVDA, JAWS, Narrator) "
-                "ควบคู่กับดีไซน์ระดับสตูดิโอที่สวยงามและใช้งานง่ายสำหรับผู้ใช้ทุกคน\n\n"
-                "จุดเด่นสำคัญ:\n"
-                "  1. ส่งเสียงพูดผ่าน Active Screen Reader โดยตรง: ไม่มีเสียง SAPI 5 มาพูดแทรกหรือตีกัน\n"
-                "  2. ควบคุมด้วยคีย์บอร์ดได้ 100%: มีปุ่มลัด Alt+ตัวอักษรครบทุกปุ่มโดยไม่ชนกับเมนูบาร์ และสลับแท็บด้วย Ctrl+1 ถึง 6\n"
-                "  3. ครบทุกฟีเจอร์ของ Gemini 3.8 Flash TTS: พูดเดี่ยว, บทสนทนาหลายผู้พูด, ออกแบบเสียงใหม่, "
-                "โคลนนิ่งเสียงพูด และคลังเสียงสตูดิโอกว่า 30 เสียง\n\n"
-                "กดปุ่ม 'ขั้นตอนถัดไป (Alt+N)' เพื่อดูวิธีตั้งค่าเริ่มต้น หรือกดปุ่ม 'ไปที่หน้าการตั้งค่าทันที (Alt+G)' เพื่อเริ่มตั้งค่าได้เลยครับ"
-            )
-        },
-        {
-            "title": "ขั้นตอนที่ 1: การตั้งค่า Gemini API Key และภาษาของโปรแกรม",
-            "body": (
-                "ก่อนเริ่มสังเคราะห์เสียงพูด กรุณาตั้งค่ารหัสเชื่อมต่อ Gemini API Key ตามขั้นตอนดังนี้:\n\n"
-                "วิธีตั้งค่าอย่างเป็นระบบ:\n"
-                "  1. กดปุ่ม 'ไปที่หน้าการตั้งค่าทันที (Alt+G)' ด้านล่างนี้ (หรือกด Ctrl+6 ได้ตลอดเวลา)\n"
-                "  2. ในหน้าการตั้งค่า กดปุ่ม 'รับรหัส API Key (Alt+G)' เพื่อเปิดหน้าเว็บ Google AI Studio บนเบราว์เซอร์\n"
-                "  3. คัดลอก API Key มาวางในช่อง 'รหัส Gemini API Key (Alt+K)'\n"
-                "  4. กดปุ่ม 'ทดสอบการเชื่อมต่อ (Alt+C)' เพื่อตรวจสอบความพร้อมใช้งาน\n"
-                "  5. เลือกภาษาของโปรแกรม (Interface Language) ระหว่าง English (ค่าเริ่มต้น) หรือ ไทย (Thai)\n"
-                "  6. กดปุ่ม 'บันทึกการตั้งค่า (Alt+S)' โปรแกรมจะถามเพื่อรีสตาร์ทให้การตั้งค่ามีผลสมบูรณ์\n\n"
-                "หมายเหตุ: ระบบจัดเก็บการตั้งค่าแบบถาวร เมื่ออัปเดตโปรแกรมในอนาคต คุณไม่จำเป็นต้องตั้งค่าใหม่"
-            )
-        },
-        {
-            "title": "ขั้นตอนที่ 2: การสำรวจแท็บและเริ่มสังเคราะห์เสียงพูดครั้งแรก",
-            "body": (
-                "เมื่อตั้งค่า API Key เรียบร้อยแล้ว คุณสามารถสร้างเสียงพูดคุณภาพสูงได้ง่ายๆ ดังนี้:\n\n"
-                "ขั้นตอนการใช้งานหลัก:\n"
-                "  1. กด Ctrl+1 สำหรับสังเคราะห์เสียงพูดเดี่ยว หรือ Ctrl+2 สำหรับบทสนทนาหลายผู้พูด (หรือกด Alt+T เพื่อเปิดเมนูแท็บ)\n"
-                "  2. เมื่อเลื่อนดูแท็บด้วยลูกศรซ้าย/ขวา โฟกัสจะล็อกอยู่บนหัวแท็บก่อนเสมอ เมื่อต้องการเข้าใช้งานจึงค่อยกดปุ่ม Tab (หรือกดคีย์ลัดอย่าง Alt+X เพื่อกระโดดเข้าช่องข้อความทันที)\n"
-                "  3. ในหน้าเสียงพูดเดี่ยว กด Alt+X เพื่อเข้าช่องพิมพ์ข้อความ กด Alt+I เพื่อแทรกแท็กเสียงธรรมชาติ (<sigh>, <laugh>, <short pause>) "
-                "หรือกด Alt+B เพื่อเลือกพรีเซ็ตอารมณ์เสียง\n"
-                "  4. กด Ctrl+Enter (หรือ Alt+G) เพื่อสั่งสังเคราะห์เสียงทันที!\n"
-                "  5. กด Alt+P เพื่อเล่นหรือหยุดเสียง และกด Ctrl+S เพื่อบันทึกเป็นไฟล์ WAV\n"
-                "  6. กดปุ่ม F1 ได้ตลอดเวลาเพื่อเปิดคู่มือการใช้งานอย่างเป็นระบบ"
-            )
-        }
-    ]
-}
+class WelcomeTourDialog(_BaseStudioDialog):
+    """First-run Welcome Screen & Guided Setup Tour."""
 
+    ID_GO_SETTINGS = 100
 
-class WelcomeTourDialog(wx.Dialog):
-    """
-    First-run Welcome Screen & Guided Setup Tour.
-    Features step-by-step instructions and a direct 'Go to Settings Now (Alt+G)' action.
-    Uses painted header so there are zero unlabeled panels.
-    """
-    ID_GO_SETTINGS = wx.ID_YES
-
-    def __init__(self, parent):
-        super().__init__(
-            parent,
-            title=tr("welcome_title"),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        )
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent, tr("welcome_title"))
         self.steps = WELCOME_TOUR_STEPS.get(config.language, WELCOME_TOUR_STEPS["en"])
         self.current_step = 0
-        style_panel(self, accessible_name=tr("welcome_title"))
         self._init_ui()
-        self.CentreOnParent()
 
     def _init_ui(self):
-        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(760, 540)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            sizer,
-            title=tr("welcome_banner_title"),
-            subtitle=tr("welcome_banner_sub"),
-            badge_text="SETUP TOUR"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("welcome_banner_title"),
+                subtitle=tr("welcome_banner_sub"),
+                badge_text="SETUP TOUR",
+            )
         )
 
-        # Step indicator label
-        self.lbl_step = wx.StaticText(self, label="")
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(10)
+
+        self.lbl_step = QLabel("", self)
         style_label(self.lbl_step, "section")
-        sizer.Add(self.lbl_step, 0, wx.LEFT | wx.RIGHT | wx.TOP, 14)
+        body.addWidget(self.lbl_step)
 
-        # Read-only RichEdit tour viewer (100% accessible with arrow keys)
-        self.txt_body = wx.TextCtrl(
-            self,
-            value="",
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2
-        )
-        style_text_ctrl(self.txt_body, multiline=True)
-        sizer.Add(self.txt_body, 1, wx.EXPAND | wx.ALL, 14)
+        self.txt_body = AccessibleTextArea("", self, read_only=True)
+        self.txt_body.setTabChangesFocus(True)
+        self.txt_body.setFont(get_qfont(10.5))
+        apply_accessible(self.txt_body, name="Welcome Tour Content", label=self.lbl_step)
+        body.addWidget(self.txt_body, 1)
 
-        # Navigation & Action Buttons
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.btn_prev = wx.Button(self, label=tr("btn_prev_step"))
-        self.btn_next = wx.Button(self, label=tr("btn_next_step"))
-        self.btn_go_settings = wx.Button(self, self.ID_GO_SETTINGS, label=tr("btn_go_settings"))
-        self.btn_go_settings.SetDefault()
-        self.btn_close = wx.Button(self, wx.ID_CANCEL, label=tr("btn_skip_tour"))
+        btn_row = QHBoxLayout()
+        self.btn_prev = QPushButton(tr("btn_prev_step"), self)
+        self.btn_next = QPushButton(tr("btn_next_step"), self)
+        self.btn_go_settings = QPushButton(tr("btn_go_settings"), self)
+        self.btn_go_settings.setDefault(True)
+        self.btn_close = QPushButton(tr("btn_skip_tour"), self)
 
         style_button(self.btn_prev, "secondary")
         style_button(self.btn_next, "secondary")
         style_button(self.btn_go_settings, "gold")
         style_button(self.btn_close, "primary")
 
-        btn_sizer.Add(self.btn_prev, 0, wx.RIGHT, 8)
-        btn_sizer.Add(self.btn_next, 0, wx.RIGHT, 16)
-        btn_sizer.AddStretchSpacer(1)
-        btn_sizer.Add(self.btn_go_settings, 0, wx.RIGHT, 8)
-        btn_sizer.Add(self.btn_close, 0)
+        btn_row.addWidget(self.btn_prev)
+        btn_row.addWidget(self.btn_next)
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_go_settings)
+        btn_row.addWidget(self.btn_close)
+        body.addLayout(btn_row)
 
-        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 14)
+        layout.addLayout(body, 1)
 
-        self.SetSizer(sizer)
-        self.SetSize((740, 520))
-
-        self.btn_prev.Bind(wx.EVT_BUTTON, self.on_prev)
-        self.btn_next.Bind(wx.EVT_BUTTON, self.on_next)
-        self.btn_go_settings.Bind(wx.EVT_BUTTON, self.on_go_settings)
-        self.btn_close.Bind(wx.EVT_BUTTON, self.on_close)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.btn_prev.clicked.connect(self.on_prev)
+        self.btn_next.clicked.connect(self.on_next)
+        self.btn_go_settings.clicked.connect(self.on_go_settings)
+        self.btn_close.clicked.connect(self.on_close)
 
         self._update_step_view(announce_step=False)
-        wx.CallAfter(self.txt_body.SetFocus)
+        self.txt_body.setFocus()
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'P' and self.btn_prev.IsEnabled():
-                self.on_prev(None)
-                return
-            if ch == 'N' and self.btn_next.IsEnabled():
-                self.on_next(None)
-                return
-            if ch == 'G':
-                self.on_go_settings(None)
-                return
-            if ch == 'S':
-                self.on_close(None)
-                return
-        event.Skip()
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "P" and self.btn_prev.isEnabled():
+            self.on_prev()
+            return
+        if ch == "N" and self.btn_next.isEnabled():
+            self.on_next()
+            return
+        if ch == "G":
+            self.on_go_settings()
+            return
+        if ch == "S":
+            self.on_close()
+            return
+        super().keyPressEvent(event)
 
     def _update_step_view(self, announce_step: bool = True):
         step_data = self.steps[self.current_step]
@@ -1088,514 +1014,154 @@ class WelcomeTourDialog(wx.Dialog):
             "welcome_step_indicator",
             step=self.current_step + 1,
             total=total,
-            title=step_data["title"]
+            title=step_data["title"],
         )
-        self.lbl_step.SetLabel(header_text)
-        self.txt_body.SetValue(step_data["body"])
-        style_text_ctrl(self.txt_body, multiline=True)
-        self.txt_body.SetInsertionPoint(0)
+        self.lbl_step.setText(header_text)
+        self.txt_body.setPlainText(step_data["body"])
+        self.txt_body.scroll_to_top()
 
-        self.btn_prev.Enable(self.current_step > 0)
-        self.btn_next.Enable(self.current_step < total - 1)
+        self.btn_prev.setEnabled(self.current_step > 0)
+        self.btn_next.setEnabled(self.current_step < total - 1)
 
         if announce_step:
             announcer.announce(f"{header_text}. {step_data['body']}")
 
-    def on_prev(self, event):
+    def on_prev(self, *args):
         if self.current_step > 0:
             self.current_step -= 1
             self._update_step_view(announce_step=True)
-            self.txt_body.SetFocus()
+            self.txt_body.setFocus()
 
-    def on_next(self, event):
+    def on_next(self, *args):
         if self.current_step < len(self.steps) - 1:
             self.current_step += 1
             self._update_step_view(announce_step=True)
-            self.txt_body.SetFocus()
+            self.txt_body.setFocus()
 
-    def on_go_settings(self, event):
+    def on_go_settings(self, *args):
         config.set("first_run_completed", True)
-        self.EndModal(self.ID_GO_SETTINGS)
+        self.done(self.ID_GO_SETTINGS)
 
-    def on_close(self, event):
+    def on_close(self, *args):
         config.set("first_run_completed", True)
-        self.EndModal(wx.ID_CANCEL)
+        self.reject()
 
 
-# ========================================================================
-# SYSTEMATIC VISUAL & ACCESSIBLE HELP MODE (F1)
-# ========================================================================
-HELP_SECTIONS = {
-    "en": [
-        {
-            "title": "1. Quick Start & First-Time Setup",
-            "content": (
-                "====================================================================\n"
-                "1. QUICK START & FIRST-TIME SETUP (STEP-BY-STEP)\n"
-                "====================================================================\n\n"
-                "Welcome to Gemvox Studio! Follow these 4 steps to start synthesizing speech:\n\n"
-                "STEP 1: OBTAIN & SAVE YOUR GEMINI API KEY\n"
-                "  1. Press Ctrl+6 to open the 'Settings' tab.\n"
-                "  2. Press Alt+G ('Get API Key') to open Google AI Studio in your web browser.\n"
-                "  3. Create or copy your API key, then paste it into 'Gemini API Key (Alt+K)'.\n"
-                "  4. Press Alt+C ('Test Connection') to verify that your key is active.\n"
-                "  5. Press Alt+S ('Save Settings'). Gemvox will prompt to restart so all changes take effect.\n\n"
-                "STEP 2: CHOOSE YOUR LANGUAGE & DEFAULTS\n"
-                "  * In Settings (Ctrl+6), use 'Interface Language (Alt+L)' to switch between English (Default) "
-                "and Thai (ภาษาไทย).\n"
-                "  * Choose your preferred Default Model (Flash vs. Flash-Lite) and Default Voice.\n"
-                "  * Your configuration is automatically preserved across future app updates.\n\n"
-                "STEP 3: GENERATE YOUR FIRST SPEECH\n"
-                "  1. Press Ctrl+1 to go to the 'Single Speaker TTS' tab.\n"
-                "  2. Press Alt+X to focus the text box and type your message.\n"
-                "  3. Press Ctrl+Enter (or Alt+G) to generate speech.\n\n"
-                "STEP 4: PLAY & EXPORT WAV AUDIO\n"
-                "  * Audio plays automatically upon generation (if Auto-play is enabled).\n"
-                "  * Press Alt+P at any time to Play or Stop audio immediately.\n"
-                "  * Press Ctrl+S to save the 24kHz WAV audio file to any location."
-            )
-        },
-        {
-            "title": "2. Tab Navigation & Screen Reader Architecture",
-            "content": (
-                "====================================================================\n"
-                "2. TAB NAVIGATION & SCREEN READER ARCHITECTURE\n"
-                "====================================================================\n\n"
-                "Gemvox is designed with zero unlabeled panels and 100% native Win32 accessibility:\n\n"
-                "DIRECT ACTIVE SCREEN READER OUTPUT:\n"
-                "  * All progress and status announcements are routed directly to your active screen reader "
-                "(NVDA via bundled nvdaControllerClient32/64.dll, JAWS via COM API, ZDSR, PC Talker, etc.).\n"
-                "  * Windows SAPI 5 fallback is completely removed so voices never clash or overlap.\n\n"
-                "HOW TAB CONTROL FOCUS LOCK WORKS:\n"
-                "  1. Jump to any of the 6 tabs using Ctrl+1 through Ctrl+6 (or Alt+1 through Alt+6), "
-                "or open the Tabs menu with Alt+T.\n"
-                "  2. You can also cycle tabs using Ctrl+Tab (Next) and Ctrl+Shift+Tab (Previous).\n"
-                "  3. When a tab is selected, focus stays cleanly locked on the Tab Control header.\n"
-                "  4. Use Left/Right Arrow keys to browse tabs, then press TAB (or any direct control shortcut "
-                "such as Alt+X) when you are ready to enter the controls inside that tab."
-            )
-        },
-        {
-            "title": "3. Single Speaker TTS, Styles & Vocal Tags (Ctrl+1)",
-            "content": (
-                "====================================================================\n"
-                "3. SINGLE SPEAKER TTS, STYLES & VOCAL TAGS (CTRL+1)\n"
-                "====================================================================\n\n"
-                "STEP-BY-STEP WORKFLOW:\n"
-                "  1. Focus Text Input (Alt+X): Type or paste the transcript you want spoken verbatim.\n"
-                "  2. Insert Inline Vocal Tags (Alt+I): Opens the Vocal Tag Picker dialog.\n"
-                "     * Use Up/Down Arrows to choose tags like <short pause>, <long pause>, <sigh>, "
-                "<laugh>, <whisper>, <gasp>, or <yawn>.\n"
-                "     * Press Enter to insert the tag at your exact cursor position.\n"
-                "  3. Select Model (Alt+M) & Voice (Alt+V):\n"
-                "     * Choose between Gemini 3.8 Flash TTS (studio fidelity) or Flash-Lite (ultra-fast).\n"
-                "     * Press Alt+U ('Audition Voice') to hear a preview of the selected voice.\n"
-                "  4. Set Style / Emotion (Alt+Y):\n"
-                "     * Type any natural instruction (e.g., 'cheerful and friendly', 'whispered urgently').\n"
-                "     * Press Alt+B ('Browse Styles') to pick from curated or custom presets.\n"
-                "     * Press Alt+C ('Create Custom Style') to save your own style preset for instant reuse.\n"
-                "  5. Generate (Ctrl+Enter / Alt+G): Synthesizes and saves the WAV file automatically."
-            )
-        },
-        {
-            "title": "4. Multi-Speaker Conversational Dialogue (Ctrl+2)",
-            "content": (
-                "====================================================================\n"
-                "4. MULTI-SPEAKER CONVERSATIONAL DIALOGUE (CTRL+2)\n"
-                "====================================================================\n\n"
-                "Create natural multi-person podcasts, interviews, and audiobooks in a single track:\n\n"
-                "STEP 1: WRITE OR LOAD A DIALOGUE SCRIPT (Alt+D)\n"
-                "  * Format each line as:\n"
-                "      SpeakerName: Text to speak [optional style instruction]\n"
-                "  * Example:\n"
-                "      Joe: Welcome back to our show! [cheerful and warm]\n"
-                "      Jane: Thanks Joe! <short pause> Excited to be here. [calm and relaxed]\n"
-                "  * Press Alt+I to insert an inline vocal tag at your cursor position.\n"
-                "  * Or press Alt+L to load the Podcast Template, or Alt+N for the Interview Template.\n\n"
-                "STEP 2: ASSIGN VOICES TO EACH SPEAKER (Alt+K)\n"
-                "  * Press Alt+K ('Update Speakers') after editing speaker names in your script.\n"
-                "  * Gemvox automatically creates a Voice dropdown for each detected speaker.\n\n"
-                "STEP 3: GENERATE DIALOGUE (Ctrl+Enter / Alt+G)\n"
-                "  * Press Ctrl+Enter to synthesize the entire conversation into one seamless WAV file."
-            )
-        },
-        {
-            "title": "5. Voice Design, Replication & Library (Ctrl+3, 4, 5)",
-            "content": (
-                "====================================================================\n"
-                "5. VOICE DESIGN, VOICE REPLICATION & VOICE LIBRARY\n"
-                "====================================================================\n\n"
-                "A. VOICE DESIGN STUDIO (Ctrl+3) - CREATE VOICES FROM TEXT PROMPTS:\n"
-                "  1. Enter a Voice Name (Alt+N), Gender (Alt+G), and Language Code (Alt+L).\n"
-                "  2. In Persona Description Prompt (Alt+D), describe the voice's age, timbre, and accent\n"
-                "     (e.g., 'A warm British astronomer in his 60s speaking with quiet wonder').\n"
-                "  3. Press Alt+C ('Create Custom Voice'). Gemini generates a persistent Voice ID and sample audio.\n"
-                "  4. The new voice is automatically added to your voice selectors across the app.\n\n"
-                "B. VOICE REPLICATION (Ctrl+4) - CLONE A VOICE WITH CONSENT:\n"
-                "  1. Enter a Voice Name (Alt+N) and select a 10-30s clean 24kHz mono Reference WAV (Alt+R / Alt+B).\n"
-                "  2. Press Alt+C ('Copy Statement') to copy the mandatory consent phrase.\n"
-                "  3. Select the Consent WAV recording (Alt+S / Alt+W) reciting that exact phrase.\n"
-                "  4. Choose Stateful or Stateless mode (Alt+M) and press Alt+V ('Replicate Voice').\n\n"
-                "C. VOICE LIBRARY & EXTENDED SEARCH (Ctrl+5):\n"
-                "  * Browse all 30 built-in Studio Voices & your Custom Voices (Alt+B), or search online (Alt+X).\n"
-                "  * Press Alt+U (or double-click any voice in the list) to Audition it immediately.\n"
-                "  * Press Alt+Y ('Use Selected Voice in TTS') to send the selected voice directly to Single Speaker TTS.\n"
-                "  * Press Alt+R ('Remove Custom Voice') to delete a custom voice from your saved list."
-            )
-        },
-        {
-            "title": "6. Complete Keyboard Shortcuts Reference",
-            "content": (
-                "====================================================================\n"
-                "6. COMPLETE KEYBOARD SHORTCUTS REFERENCE (ZERO COLLISIONS)\n"
-                "====================================================================\n\n"
-                "TOP MENU BAR SHORTCUTS:\n"
-                "  * Alt+F : File Menu           |  Alt+E : Edit Menu\n"
-                "  * Alt+A : Audio Menu          |  Alt+T : Tabs Menu\n"
-                "  * Alt+O : Tools Menu          |  Alt+H : Help Menu\n\n"
-                "GLOBAL & STUDIO AUDIO PLAYER SHORTCUTS (WORK ANYWHERE):\n"
-                "  * Ctrl+Enter          : Generate Speech / Dialogue / Voice Design\n"
-                "  * Alt+P               : Play / Pause / Resume current audio\n"
-                "  * Alt+Q               : Stop audio & reset to 00:00\n"
-                "  * F7 / F8             : Rewind 5 Seconds (-5s) / Fast-Forward 5 Seconds (+5s)\n"
-                "  * F9 / F10            : Volume Down (-10%) / Volume Up (+10%)\n"
-                "  * Ctrl+L              : Toggle Loop Playback On / Off\n"
-                "  * Ctrl+Shift+P        : Cycle Playback Speed (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
-                "  * Ctrl+S              : Save current audio as WAV file\n"
-                "  * Ctrl+O              : Open / Load .txt script file into active tab\n"
-                "  * Ctrl+Shift+S        : Save current text or dialogue script as .txt file\n"
-                "  * Ctrl+H              : Open Recent Generations History dialog\n"
-                "  * Ctrl+Shift+O        : Open Audio Output Folder in File Explorer\n"
-                "  * Ctrl+I              : Announce Text & Script Statistics (words, chars, est. duration)\n"
-                "  * Ctrl+U              : Check for Updates & Direct Auto-Installer from GitHub\n"
-                "  * Ctrl+1 .. Ctrl+6    : Switch directly to Tab 1 through Tab 6 (also Alt+1..6)\n"
-                "  * Ctrl+Tab            : Switch to Next Tab (also Ctrl+PageDown)\n"
-                "  * Ctrl+Shift+Tab      : Switch to Previous Tab (also Ctrl+PageUp)\n"
-                "  * F1                  : Open this Systematic User Guide\n"
-                "  * Alt+Shift+L         : Clear text field in active tab\n\n"
-                "STANDARD WINDOWS TEXT EDITING SHORTCUTS:\n"
-                "  * Ctrl+Z / Ctrl+Y     : Undo / Redo text edit\n"
-                "  * Ctrl+X / Ctrl+C     : Cut / Copy selected text\n"
-                "  * Ctrl+V / Ctrl+A     : Paste / Select All text\n"
-                "  * Shift+F10 / AppsKey : Open accessible right-click context menu\n\n"
-                "SINGLE-SPEAKER TAB (CTRL+1):\n"
-                "  * Alt+X : Focus Text Input      |  Alt+I : Insert Vocal Tag at Cursor\n"
-                "  * Alt+L : Clear Text            |  Alt+M : Select Model\n"
-                "  * Alt+V : Select Voice          |  Alt+U : Audition Voice\n"
-                "  * Alt+Y : Focus Style / Emotion |  Alt+B : Browse Style Presets\n"
-                "  * Alt+C : Create Custom Style   |  Alt+G : Generate Speech\n\n"
-                "MULTI-SPEAKER TAB (CTRL+2):\n"
-                "  * Alt+D : Focus Dialogue Script |  Alt+I : Insert Vocal Tag at Cursor\n"
-                "  * Alt+L : Load Podcast Template |  Alt+N : Load Interview Template\n"
-                "  * Alt+K : Update Speakers       |  Alt+G : Generate Dialogue\n\n"
-                "VOICE LIBRARY TAB (CTRL+5):\n"
-                "  * Alt+S : Search Query          |  Alt+X : Search Online Library\n"
-                "  * Alt+B : Show Built-in/Custom  |  Alt+V : Focus Voices List\n"
-                "  * Alt+U : Audition Voice        |  Alt+Y : Use Selected Voice in TTS\n"
-                "  * Alt+C : Copy Voice ID         |  Alt+R : Remove Custom Voice\n\n"
-                "SETTINGS TAB (CTRL+6):\n"
-                "  * Alt+K : Focus API Key         |  Alt+C : Test API Connection\n"
-                "  * Alt+G : Get API Key Online    |  Alt+D : Output Folder\n"
-                "  * Alt+L : Interface Language    |  Alt+S : Save Settings"
-            )
-        }
-    ],
-    "th": [
-        {
-            "title": "1. เริ่มต้นใช้งานอย่างรวดเร็วและการตั้งค่าครั้งแรก",
-            "content": (
-                "====================================================================\n"
-                "1. เริ่มต้นใช้งานอย่างรวดเร็วและการตั้งค่าครั้งแรก (ทีละขั้นตอน)\n"
-                "====================================================================\n\n"
-                "ยินดีต้อนรับสู่ Gemvox Studio! ทำตาม 4 ขั้นตอนง่ายๆ เพื่อเริ่มสังเคราะห์เสียงพูด:\n\n"
-                "ขั้นตอนที่ 1: การรับและตั้งค่ารหัส GEMINI API KEY\n"
-                "  1. กด Ctrl+6 เพื่อเปิดแท็บ 'การตั้งค่า (Settings)'\n"
-                "  2. กดปุ่ม Alt+G ('รับรหัส API Key') เพื่อเปิดเว็บ Google AI Studio บนเบราว์เซอร์ของคุณ\n"
-                "  3. คัดลอก API Key มาวางลงในช่อง 'รหัส Gemini API Key (Alt+K)'\n"
-                "  4. กดปุ่ม Alt+C ('ทดสอบการเชื่อมต่อ') เพื่อตรวจสอบว่าคีย์ใช้งานได้ปกติ\n"
-                "  5. กดปุ่ม Alt+S ('บันทึกการตั้งค่า') โปรแกรมจะถามเพื่อรีสตาร์ทให้การตั้งค่ามีผลสมบูรณ์\n\n"
-                "ขั้นตอนที่ 2: การเลือกภาษาและค่าเริ่มต้นของโปรแกรม\n"
-                "  * ในหน้าการตั้งค่า (Ctrl+6) กด Alt+L เพื่อเลือกภาษาของโปรแกรมระหว่าง English (ค่าเริ่มต้น) หรือ ไทย (Thai)\n"
-                "  * เลือกโมเดลเริ่มต้นและเสียงพูดเริ่มต้นที่คุณชื่นชอบ\n"
-                "  * ข้อมูลการตั้งค่าทั้งหมดจะถูกเก็บไว้อย่างเป็นระบบ เมื่ออัปเดตเวอร์ชันใหม่ไม่ต้องตั้งค่าซ้ำ\n\n"
-                "ขั้นตอนที่ 3: การสังเคราะห์เสียงพูดครั้งแรก\n"
-                "  1. กด Ctrl+1 เพื่อไปที่แท็บ 'สังเคราะห์เสียงพูดเดี่ยว'\n"
-                "  2. กด Alt+X เพื่อเข้าสู่ช่องพิมพ์ข้อความ แล้วพิมพ์ประโยคที่ต้องการ\n"
-                "  3. กด Ctrl+Enter (หรือ Alt+G) เพื่อสั่งสังเคราะห์เสียงทันที!\n\n"
-                "ขั้นตอนที่ 4: การเล่นและบันทึกไฟล์เสียง WAV\n"
-                "  * กด Alt+P เพื่อ เล่น / พักชั่วคราว (Play/Pause) หรือกด Alt+Q เพื่อหยุดและรีเซ็ตเวลาเป็น 00:00\n"
-                "  * กด F7 / F8 เพื่อกรอกลับ/กรอไปข้างหน้า 5 วินาที และกด F9 / F10 เพื่อลด/เพิ่มระดับเสียง\n"
-                "  * กด Ctrl+S เพื่อบันทึกไฟล์เสียง WAV (24kHz) เก็บไว้ในโฟลเดอร์ที่ต้องการ"
-            )
-        },
-        {
-            "title": "2. การสลับแท็บและการทำงานร่วมกับ Screen Reader",
-            "content": (
-                "====================================================================\n"
-                "2. การสลับแท็บและการทำงานร่วมกับ SCREEN READER\n"
-                "====================================================================\n\n"
-                "Gemvox ออกแบบให้ปราศจาก Unlabeled Panel 100% เพื่อความรวดเร็วในการใช้งาน:\n\n"
-                "การส่งเสียงพูดตรงเข้า ACTIVE SCREEN READER:\n"
-                "  * ทุกข้อความแจ้งเตือนสถานะจะถูกส่งตรงไปยัง Screen Reader ที่เปิดใช้งานอยู่โดยตรง "
-                "(เช่น NVDA ผ่าน nvdaControllerClient32/64.dll ที่แนบมากับโปรแกรม, JAWS ผ่าน COM API, ZDSR ฯลฯ)\n"
-                "  * ตัดการทำงานของ SAPI 5 ออกทั้งหมด ทำให้ไม่มีเสียงพูดซ้อนทับหรือตีกัน\n\n"
-                "ระบบล็อกโฟกัสบนหัวแท็บ (TAB CONTROL FOCUS LOCK):\n"
-                "  1. กด Ctrl+1 ถึง Ctrl+6 (หรือ Alt+1 ถึง Alt+6) เพื่อสลับไปยังแท็บที่ 1 ถึง 6 ได้ทันที (หรือกด Alt+T เพื่อเปิดเมนูแท็บ)\n"
-                "  2. หรือกด Ctrl+Tab (แท็บถัดไป) และ Ctrl+Shift+Tab (แท็บก่อนหน้า)\n"
-                "  3. เมื่อสลับแท็บ โฟกัสจะถูกล็อกไว้ที่หัวแท็บ (Tab Control) ก่อนเสมอ ไม่กระโดดเข้าข้างในเอง\n"
-                "  4. คุณสามารถกดลูกศรซ้าย/ขวาเพื่อสำรวจชื่อแท็บ และเมื่อต้องการเข้าใช้งานจึงค่อยกดปุ่ม Tab (หรือกดคีย์ลัดของคอนโทรล เช่น Alt+X ได้ทันที)"
-            )
-        },
-        {
-            "title": "3. สังเคราะห์เสียงเดี่ยว อารมณ์เสียง และแท็กเสียง (Ctrl+1)",
-            "content": (
-                "====================================================================\n"
-                "3. สังเคราะห์เสียงเดี่ยว อารมณ์เสียง และแท็กเสียง (CTRL+1)\n"
-                "====================================================================\n\n"
-                "ลำดับขั้นตอนการใช้งานอย่างละเอียด:\n"
-                "  1. ช่องพิมพ์ข้อความ (Alt+X): พิมพ์หรือวางบทพูดที่ต้องการให้อ่านตามตัวอักษร\n"
-                "  2. แทรกแท็กเสียงธรรมชาติ (Alt+I): เปิดหน้าต่างเลือก Vocal Tag\n"
-                "     * กดลูกศรขึ้น/ลง เพื่อเลือกแท็ก เช่น <short pause> (หยุดสั้นๆ), <long pause> (หยุดยาว),\n"
-                "       <sigh> (ถอนหายใจ), <laugh> (หัวเราะ), <whisper> (กระซิบ), หรือ <yawn> (หาว)\n"
-                "     * กด Enter เพื่อแทรกแท็กลงตรงตำแหน่งเคอร์เซอร์เดิมอย่างแม่นยำ 100%\n"
-                "  3. เลือกโมเดล (Alt+M) และเสียงพูด (Alt+V):\n"
-                "     * เลือกโมเดล Flash (คุณภาพระดับสตูดิโอ) หรือ Flash-Lite (ประมวลผลไวพิเศษ)\n"
-                "     * กดปุ่ม Alt+U ('ทดลองฟังเสียง') เพื่อฟังตัวอย่างเสียงที่เลือกอยู่\n"
-                "  4. กำหนดอารมณ์ / สไตล์การพูด (Alt+Y):\n"
-                "     * พิมพ์คำสั่งอารมณ์ได้อิสระ หรือกด Alt+B ('เลือกสไตล์') เพื่อเลือกจากรายการพรีเซ็ต\n"
-                "     * กด Alt+C ('สร้างสไตล์ส่วนตัว') เพื่อบันทึกสไตล์ที่ใช้บ่อยเก็บไว้ใช้ซ้ำโดยไม่ต้องพิมพ์ใหม่\n"
-                "  5. สังเคราะห์เสียง (Ctrl+Enter / Alt+G): ประมวลผลและเล่นเสียงอัตโนมัติ"
-            )
-        },
-        {
-            "title": "4. การสร้างบทสนทนาหลายผู้พูด (Ctrl+2)",
-            "content": (
-                "====================================================================\n"
-                "4. การสร้างบทสนทนาหลายผู้พูด (MULTI-SPEAKER DIALOGUE - CTRL+2)\n"
-                "====================================================================\n\n"
-                "สร้างพอดแคสต์ รายการสัมภาษณ์ หรือละครเสียงที่มีผู้พูดโต้ตอบกันหลายคนในไฟล์เดียว:\n\n"
-                "ขั้นตอนที่ 1: เขียนหรือโหลดสคริปต์บทสนทนา (Alt+D)\n"
-                "  * พิมพ์แต่ละบรรทัดในรูปแบบ:\n"
-                "      ชื่อผู้พูด: ข้อความที่ต้องการให้พูด [อารมณ์เสียงเพิ่มเติม]\n"
-                "  * ตัวอย่าง:\n"
-                "      Joe: ยินดีต้อนรับทุกท่านเข้าสู่พอดแคสต์ของเราครับ! [cheerful and warm]\n"
-                "      Jane: ขอบคุณค่ะคุณโจ <short pause> วันนี้เรามีเรื่องน่าตื่นเต้นมาคุยกันค่ะ [calm]\n"
-                "  * กด Alt+I เพื่อแทรกแท็กเสียงธรรมชาติลงในตำแหน่งเคอร์เซอร์\n"
-                "  * หรือกด Alt+L เพื่อโหลดเทมเพลตพอดแคสต์ และ Alt+N เพื่อโหลดเทมเพลตสัมภาษณ์\n\n"
-                "ขั้นตอนที่ 2: จับคู่เสียงให้ผู้พูดแต่ละคน (Alt+K)\n"
-                "  * เมื่อพิมพ์สคริปต์เสร็จ กดปุ่ม Alt+K ('อัปเดตรายชื่อผู้พูด')\n"
-                "  * โปรแกรมจะสร้างช่องเลือกเสียง (Dropdown) แยกตามรายชื่อตัวละครในสคริปต์ให้อัตโนมัติ\n\n"
-                "ขั้นตอนที่ 3: สังเคราะห์บทสนทนา (Ctrl+Enter / Alt+G)\n"
-                "  * กด Ctrl+Enter เพื่อรวมเสียงสนทนาของทุกตัวละครออกมาเป็นไฟล์ WAV ไฟล์เดียวอย่างเป็นธรรมชาติ"
-            )
-        },
-        {
-            "title": "5. ออกแบบเสียงใหม่ โคลนเสียง และคลังเสียง (Ctrl+3, 4, 5)",
-            "content": (
-                "====================================================================\n"
-                "5. ออกแบบเสียงใหม่ • โคลนนิ่งเสียงพูด • คลังเสียงสตูดิโอ\n"
-                "====================================================================\n\n"
-                "ก. ออกแบบเสียงใหม่จากคำบรรยาย (Voice Design Studio - Ctrl+3):\n"
-                "  1. ตั้งชื่อเสียงพูด (Alt+N) เลือกเพศ (Alt+G) และรหัสภาษา (Alt+L)\n"
-                "  2. พิมพ์คำบรรยายบุคลิกเสียงในช่อง Prompt (Alt+D) เช่น อายุ โทนเสียง สำเนียงการพูด\n"
-                "  3. กดปุ่ม Alt+C ('สร้างเสียงพูดใหม่') ระบบจะสร้างรหัส Voice ID ถาวรพร้อมเสียงตัวอย่าง\n"
-                "  4. เสียงที่สร้างเสร็จจะถูกซิงค์เข้าสู่รายการเลือกเสียงในทุกแท็บทันทีโดยไม่ต้องรีสตาร์ทโปรแกรม\n\n"
-                "ข. โคลนนิ่งเสียงพูด (Voice Replication - Ctrl+4):\n"
-                "  1. ตั้งชื่อเสียง (Alt+N) และเลือกไฟล์เสียงอ้างอิง WAV 24kHz ความยาว 10-30 วินาที (Alt+R / Alt+B)\n"
-                "  2. กดปุ่ม Alt+C ('คัดลอกประโยค') เพื่อดูประโยคยืนยันสิทธิ์มาตรฐาน\n"
-                "  3. เลือกไฟล์เสียง WAV ที่เจ้าของเสียงอ่านประโยคยืนยันสิทธิ์นั้น (Alt+S / Alt+W)\n"
-                "  4. เลือกโหมดการจัดเก็บ (Alt+M) แล้วกดปุ่ม Alt+V ('โคลนนิ่งเสียงพูด')\n\n"
-                "ค. คลังเสียงและการค้นหาออนไลน์ (Voice Library - Ctrl+5):\n"
-                "  * แสดงรายชื่อเสียงสตูดิโอและเสียงส่วนตัว (Alt+B) หรือค้นหาจากคลังออนไลน์ (Alt+X)\n"
-                "  * กดปุ่ม Alt+U (หรือกดดับเบิลคลิก) เพื่อทดลองฟังเสียงตัวอย่างได้ทันที\n"
-                "  * กดปุ่ม Alt+Y ('ใช้เสียงนี้ในหน้าพูดเดี่ยว') เพื่อส่งเสียงที่เลือกไปตั้งใช้งานในแท็บที่ 1 ทันที\n"
-                "  * กดปุ่ม Alt+R ('ลบเสียงส่วนตัว') เพื่อลบเสียงที่สร้างไว้เองออกจากรายการ"
-            )
-        },
-        {
-            "title": "6. ตารางสรุปคีย์ลัดทั้งหมด (Keyboard Shortcuts)",
-            "content": (
-                "====================================================================\n"
-                "6. ตารางสรุปคีย์ลัดทั้งหมด (ไร้การชนกับเมนูบาร์ 100%)\n"
-                "====================================================================\n\n"
-                "คีย์ลัดเมนูบาร์ด้านบน (TOP MENU BAR):\n"
-                "  * Alt+F : เมนูไฟล์ (File)        |  Alt+E : เมนูแก้ไข (Edit)\n"
-                "  * Alt+A : เมนูเสียง (Audio)      |  Alt+T : เมนูแท็บ (Tabs)\n"
-                "  * Alt+O : เมนูเครื่องมือ (Tools)  |  Alt+H : เมนูช่วยเหลือ (Help)\n\n"
-                "คีย์ลัดระดับ GLOBAL & เครื่องเล่นเสียงสตูดิโอ (กดใช้งานได้จากทุกหน้า):\n"
-                "  * Ctrl+Enter          : สั่งสังเคราะห์เสียงพูด / บทสนทนา / ออกแบบเสียง\n"
-                "  * Alt+P               : เล่นเสียง / พักชั่วคราว / เล่นต่อ (Play / Pause / Resume)\n"
-                "  * Alt+Q               : หยุดเสียงและรีเซ็ตเวลาเป็น 00:00 (Stop)\n"
-                "  * F7 / F8             : กรอกลับ 5 วินาที (-5s) / กรอไปข้างหน้า 5 วินาที (+5s)\n"
-                "  * F9 / F10            : ลดระดับเสียง (-10%) / เพิ่มระดับเสียง (+10%)\n"
-                "  * Ctrl+L              : เปิด/ปิดโหมดเล่นวนซ้ำ (Loop Playback)\n"
-                "  * Ctrl+Shift+P        : สลับความเร็วการเล่นเสียง (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
-                "  * Ctrl+S              : บันทึกไฟล์เสียงปัจจุบันเป็นไฟล์ WAV\n"
-                "  * Ctrl+O              : เปิดไฟล์ข้อความ / สคริปต์ (.txt) เข้าสู่แท็บปัจจุบัน\n"
-                "  * Ctrl+Shift+S        : บันทึกข้อความหรือสคริปต์บทสนทนาเป็นไฟล์ .txt\n"
-                "  * Ctrl+H              : เปิดหน้าต่างประวัติไฟล์เสียงที่สร้างล่าสุด (History)\n"
-                "  * Ctrl+Shift+O        : เปิดโฟลเดอร์เก็บไฟล์เสียง (Output Folder) ใน File Explorer\n"
-                "  * Ctrl+I              : อ่านสถิติข้อความ (จำนวนคำ ตัวอักษร และเวลาพูดโดยประมาณ)\n"
-                "  * Ctrl+U              : ตรวจสอบและอัปเดตโปรแกรมอัตโนมัติโดยตรงจาก GitHub\n"
-                "  * Ctrl+1 ถึง Ctrl+6    : สลับไปยังแท็บที่ 1 ถึง 6 โดยตรง (หรือกด Alt+1 ถึง 6)\n"
-                "  * Ctrl+Tab            : เลื่อนไปแท็บถัดไป (หรือ Ctrl+PageDown)\n"
-                "  * Ctrl+Shift+Tab      : เลื่อนไปแท็บก่อนหน้า (หรือ Ctrl+PageUp)\n"
-                "  * F1                  : เปิดหน้าต่างคู่มือการใช้งานอย่างเป็นระบบนี้\n"
-                "  * Alt+Shift+L         : ล้างข้อความในช่องพิมพ์ของแท็บปัจจุบัน\n\n"
-                "คีย์ลัดจัดการข้อความมาตรฐาน WINDOWS:\n"
-                "  * Ctrl+Z / Ctrl+Y     : เลิกทำ (Undo) / ทำซ้ำ (Redo)\n"
-                "  * Ctrl+X / Ctrl+C     : ตัด (Cut) / คัดลอก (Copy)\n"
-                "  * Ctrl+V / Ctrl+A     : วาง (Paste) / เลือกทั้งหมด (Select All)\n"
-                "  * Shift+F10 / AppsKey : เปิดเมนูบริบท (Context Menu)\n\n"
-                "คีย์ลัดในแท็บสังเคราะห์เสียงเดี่ยว (CTRL+1):\n"
-                "  * Alt+X : ช่องพิมพ์ข้อความ      |  Alt+I : แทรกแท็กเสียงตรงเคอร์เซอร์\n"
-                "  * Alt+L : ล้างข้อความ          |  Alt+M : เลือกโมเดล\n"
-                "  * Alt+V : เลือกเสียงพูด         |  Alt+U : ทดลองฟังเสียง\n"
-                "  * Alt+Y : ช่องกำหนดอารมณ์/สไตล์ |  Alt+B : เลือกพรีเซ็ตสไตล์\n"
-                "  * Alt+C : สร้างสไตล์ส่วนตัว     |  Alt+G : สังเคราะห์เสียงพูด\n\n"
-                "คีย์ลัดในแท็บบทสนทนาหลายผู้พูด (CTRL+2):\n"
-                "  * Alt+D : ช่องสคริปต์บทสนทนา   |  Alt+I : แทรกแท็กเสียงตรงเคอร์เซอร์\n"
-                "  * Alt+L : โหลดเทมเพลตพอดแคสต์  |  Alt+N : โหลดเทมเพลตสัมภาษณ์\n"
-                "  * Alt+K : อัปเดตรายชื่อผู้พูด     |  Alt+G : สังเคราะห์บทสนทนา\n\n"
-                "คีย์ลัดในแท็บคลังเสียงและค้นหา (CTRL+5):\n"
-                "  * Alt+S : ช่องคำค้นหา          |  Alt+X : ค้นหาคลังเสียงออนไลน์\n"
-                "  * Alt+B : แสดงเสียงในตัว/ส่วนตัว |  Alt+V : รายชื่อเสียงพูด\n"
-                "  * Alt+U : ทดลองฟังเสียง        |  Alt+Y : ใช้เสียงนี้ในหน้าพูดเดี่ยว\n"
-                "  * Alt+C : คัดลอกรหัสเสียง       |  Alt+R : ลบเสียงส่วนตัว\n\n"
-                "คีย์ลัดในแท็บการตั้งค่า (CTRL+6):\n"
-                "  * Alt+K : ช่องใส่ API Key      |  Alt+C : ทดสอบการเชื่อมต่อ\n"
-                "  * Alt+G : รับรหัส API Key      |  Alt+D : โฟลเดอร์บันทึกเสียง\n"
-                "  * Alt+L : เลือกภาษาโปรแกรม     |  Alt+S : บันทึกการตั้งค่า"
-            )
-        }
-    ]
-}
+class HelpDialog(_BaseStudioDialog):
+    """Systematic Step-by-Step User Guide & Visual Help Mode (F1)."""
 
-
-class HelpDialog(wx.Dialog):
-    """
-    Systematic Step-by-Step User Guide & Visual Help Mode (F1).
-    Features a clean Master-Detail split layout:
-    - Left: Topic ListBox (Alt+T) for instant chapter jumping.
-    - Right: RichEdit2 Step-by-Step Guide Viewer (Alt+G) for detailed reading.
-    - Painted top header banner with 0 unlabeled panels.
-    """
-    def __init__(self, parent):
-        super().__init__(
-            parent,
-            title=tr("help_title"),
-            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER
-        )
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent, tr("help_title"))
         self.sections = HELP_SECTIONS.get(config.language, HELP_SECTIONS["en"])
-        style_panel(self, accessible_name=tr("help_title"))
         self._init_ui()
-        self.CentreOnParent()
 
     def _init_ui(self):
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.resize(880, 640)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        attach_painted_header(
-            self,
-            main_sizer,
-            title=tr("help_banner_title"),
-            subtitle=tr("help_banner_sub"),
-            badge_text="F1 USER GUIDE"
+        layout.addWidget(
+            StudioHeaderBanner(
+                title=tr("help_banner_title"),
+                subtitle=tr("help_banner_sub"),
+                badge_text="F1 USER GUIDE",
+            )
         )
 
-        # Master-Detail Split Area
-        split_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        body = QVBoxLayout()
+        body.setContentsMargins(14, 12, 14, 14)
+        body.setSpacing(12)
 
-        # Left column: Topics ListBox
-        left_sizer = wx.BoxSizer(wx.VERTICAL)
-        lbl_topics = wx.StaticText(self, label=tr("help_topics_label"))
+        split_row = QHBoxLayout()
+        split_row.setSpacing(12)
+
+        # Left column: Topics List
+        left_col = QVBoxLayout()
+        left_col.setSpacing(6)
+        lbl_topics = QLabel(tr("help_topics_label"), self)
         style_label(lbl_topics, "section")
-        left_sizer.Add(lbl_topics, 0, wx.BOTTOM, 6)
+        left_col.addWidget(lbl_topics)
 
+        self.list_topics = QListWidget(self)
+        self.list_topics.setFixedWidth(280)
         topic_titles = [s["title"] for s in self.sections]
-        self.list_topics = wx.ListBox(self, choices=topic_titles, style=wx.LB_SINGLE, size=(270, -1))
-        style_listbox(self.list_topics)
-        left_sizer.Add(self.list_topics, 1, wx.EXPAND)
-        split_sizer.Add(left_sizer, 0, wx.EXPAND | wx.RIGHT, 12)
+        self.list_topics.addItems(topic_titles)
+        apply_accessible(self.list_topics, name=tr("help_topics_label"), label=lbl_topics)
+        left_col.addWidget(self.list_topics, 1)
+        split_row.addLayout(left_col)
 
-        # Right column: Detailed Guide Content
-        right_sizer = wx.BoxSizer(wx.VERTICAL)
-        lbl_content = wx.StaticText(self, label=tr("help_content_label"))
+        # Right column: Content Viewer
+        right_col = QVBoxLayout()
+        right_col.setSpacing(6)
+        lbl_content = QLabel(tr("help_content_label"), self)
         style_label(lbl_content, "section")
-        right_sizer.Add(lbl_content, 0, wx.BOTTOM, 6)
+        right_col.addWidget(lbl_content)
 
-        self.txt_content = wx.TextCtrl(
-            self,
-            value="",
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2
-        )
-        style_text_ctrl(self.txt_content, multiline=True, mono=True)
-        right_sizer.Add(self.txt_content, 1, wx.EXPAND)
-        split_sizer.Add(right_sizer, 1, wx.EXPAND)
+        self.txt_content = AccessibleTextArea("", self, read_only=True)
+        self.txt_content.setTabChangesFocus(True)
+        self.txt_content.setFont(get_qfont(10, mono=True))
+        apply_accessible(self.txt_content, name=tr("help_content_label"), label=lbl_content)
+        right_col.addWidget(self.txt_content, 1)
+        split_row.addLayout(right_col, 1)
 
-        main_sizer.Add(split_sizer, 1, wx.EXPAND | wx.ALL, 14)
+        body.addLayout(split_row, 1)
 
-        # Bottom action bar
-        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        btn_tour = wx.Button(self, label=tr("btn_open_tour"))
+        btn_row = QHBoxLayout()
+        btn_tour = QPushButton(tr("btn_open_tour"), self)
         style_button(btn_tour, "gold")
-        close_btn = wx.Button(self, wx.ID_CANCEL, label=tr("btn_close"))
-        close_btn.SetDefault()
+
+        close_btn = QPushButton(tr("btn_close"), self)
+        close_btn.setDefault(True)
         style_button(close_btn, "primary")
 
-        btn_sizer.Add(btn_tour, 0, wx.RIGHT, 10)
-        btn_sizer.AddStretchSpacer(1)
-        btn_sizer.Add(close_btn, 0)
-        main_sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 14)
+        btn_row.addWidget(btn_tour)
+        btn_row.addStretch(1)
+        btn_row.addWidget(close_btn)
+        body.addLayout(btn_row)
 
-        self.SetSizer(main_sizer)
-        self.SetSize((860, 620))
+        layout.addLayout(body, 1)
 
-        self.list_topics.Bind(wx.EVT_LISTBOX, self.on_topic_selected)
-        btn_tour.Bind(wx.EVT_BUTTON, self.on_open_tour)
-        self.Bind(wx.EVT_CHAR_HOOK, self.on_char_hook)
+        self.list_topics.currentRowChanged.connect(self.on_topic_selected)
+        btn_tour.clicked.connect(self.on_open_tour)
+        close_btn.clicked.connect(self.reject)
 
         if topic_titles:
-            self.list_topics.SetSelection(0)
+            self.list_topics.setCurrentRow(0)
             self._load_section(0, announce=False)
 
-        wx.CallAfter(self.list_topics.SetFocus)
+        self.list_topics.setFocus()
 
-    def on_char_hook(self, event):
-        key = event.GetKeyCode()
-        if event.AltDown() and not event.ControlDown() and not event.ShiftDown() and 32 <= key <= 126:
-            ch = chr(key).upper()
-            if ch == 'T':
-                self.list_topics.SetFocus()
-                return
-            if ch == 'G':
-                self.txt_content.SetFocus()
-                return
-            if ch == 'W':
-                self.on_open_tour(None)
-                return
-            if ch == 'C':
-                self.EndModal(wx.ID_CANCEL)
-                return
-        event.Skip()
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "T":
+            self.list_topics.setFocus()
+            return
+        if ch == "G":
+            self.txt_content.setFocus()
+            return
+        if ch == "W":
+            self.on_open_tour()
+            return
+        if ch == "C":
+            self.reject()
+            return
+        super().keyPressEvent(event)
 
     def _load_section(self, idx: int, announce: bool = False):
         if 0 <= idx < len(self.sections):
             sec = self.sections[idx]
-            self.txt_content.SetValue(sec["content"])
-            style_text_ctrl(self.txt_content, multiline=True, mono=True)
-            self.txt_content.SetInsertionPoint(0)
+            self.txt_content.setPlainText(sec["content"])
+            self.txt_content.scroll_to_top()
             if announce:
                 announcer.announce(sec["title"])
 
-    def on_topic_selected(self, event):
-        sel = self.list_topics.GetSelection()
-        if sel != wx.NOT_FOUND:
-            self._load_section(sel, announce=True)
-        event.Skip()
+    def on_topic_selected(self, row: int):
+        if row >= 0:
+            self._load_section(row, announce=True)
 
-    def on_open_tour(self, event):
+    def on_open_tour(self, *args):
         dlg = WelcomeTourDialog(self)
-        res = dlg.ShowModal()
-        dlg.Destroy()
+        res = dlg.exec()
         if res == WelcomeTourDialog.ID_GO_SETTINGS:
-            self.EndModal(WelcomeTourDialog.ID_GO_SETTINGS)
+            self.done(WelcomeTourDialog.ID_GO_SETTINGS)

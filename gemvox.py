@@ -125,18 +125,29 @@ def main():
         run_interactive_cli()
         return
 
-    # Default: launch Accessible wxPython GUI
-    # IMPORTANT: Create wx.App(False) BEFORE importing MainWindow / theme so wx stock GDI
-    # objects (wx.Colour, wx.Font) are always initialized after wx.App exists.
+    # Default: launch Universal Design PySide6 GUI
     try:
         _enable_windows_high_dpi()
-        import wx
-        app = wx.App(False)
+        from PySide6.QtWidgets import QApplication
+        from gemvox.ui.theme import build_studio_stylesheet, create_app_icon, get_qfont
         from gemvox.ui.main_window import MainWindow
 
-        frame = MainWindow()
-        frame.Show()
-        app.MainLoop()
+        app = QApplication(sys.argv)
+        app.setApplicationName("Gemvox")
+        app.setApplicationDisplayName("Gemvox")
+        app.setStyle("Fusion")
+        app.setFont(get_qfont(10))
+        app.setStyleSheet(build_studio_stylesheet())
+        try:
+            app.setWindowIcon(create_app_icon())
+        except Exception:
+            pass
+
+        window = MainWindow()
+        window.show()
+        sys.exit(app.exec())
+    except SystemExit:
+        raise
     except Exception as e:
         _report_startup_error("Could not launch Gemvox graphical interface", e)
         if _has_interactive_stdin():

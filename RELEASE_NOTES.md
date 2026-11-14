@@ -1,71 +1,28 @@
-# Gemvox v1.1.8: Fix 400 INVALID_ARGUMENT speechConfig & Enhanced TTS Endpoint Resilience
+# Gemvox v1.1.9: Long-Form Audio Quality Fix, Long-Play Stability & Startup Auto-Updater
 
-Accessible Desktop Studio for Google Gemini Speech Synthesis (Single-Speaker, Multi-Speaker Conversational Dialogue, Voice Design, Replication & Extended Library) with First-Class Screen Reader Support (NVDA, JAWS, Narrator).
-
----
-
-## 🌟 What's New in v1.1.8
-
-### 1. 🛠️ Fix 400 INVALID_ARGUMENT (`Unknown name "speechConfig" at 'generation_config'`)
-- **Root Cause**: When initialized without an explicit API version, the `google-genai` SDK defaults to Google AI Studio's `/v1/` endpoint. The `v1` endpoint schema only supports standard Text/Vision models and rejects `speechConfig` and `responseModalities: ["AUDIO"]` inside `generation_config`, resulting in HTTP 400 rejection upon prompt submission.
-- **Enforced `v1beta` Endpoint**:
-  - Configured `genai.Client` with `http_options={"api_version": "v1beta"}` and exported `GOOGLE_GENAI_API_VERSION="v1beta"`.
-  - Upgraded payload generation to use strongly-typed `google.genai.types.GenerateContentConfig` and `types.SpeechConfig` for both single-speaker and multi-speaker synthesis.
-- **Interactions API Compliance for Dialogue**:
-  - Removed deprecated `mode: "conversational"` parameter from `speech_config` to prevent recent 400 parameter rejection from Google backend servers.
+More enhancement to audio player model and updating function.
 
 ---
 
-### 2. 🛡️ Intelligent Model Fallback & Error Classification
-- **Automatic Fallback on Model Rejection**: The engine automatically detects `404 Not Found`, `Unknown name speechConfig`, `cannot find field`, and `is not supported` errors, immediately falling back to the next candidate model in sequence without interrupting the user.
-- **Accurate Authentication & Quota Reporting**: Legitimate API key errors (`API_KEY_INVALID`) or quota limits (`RESOURCE_EXHAUSTED`) are preserved and reported directly to the user rather than erroneously triggering fallbacks.
-- **Candidate Fallback Priority**:
-  1. `gemini-2.5-flash-preview-tts` (Maximum stability across all Google AI Studio API key tiers)
-  2. `gemini-3.1-flash-tts-preview` (Rich vocal acting & inline vocal tag support)
-  3. `gemini-2.5-pro-preview-tts` (Studio-grade long-form narration)
-  4. `gemini-3.8-flash-lite-tts` (Low-latency throughput)
-  5. `gemini-3.8-flash-tts` (Flagship next-gen synthesis)
-  6. `gemini-2.0-flash` (Universal audio modality fallback)
-- **Seamless PCM-to-WAV RIFF Wrapping**: Automatically encapsulates 24kHz 16-bit Mono raw PCM (`audio/L16`) into standardized RIFF WAV headers.
+## 🌟 What's New in v1.1.9
+
+### 1. 🎙️ Long-Form TTS Chunking & Seamless PCM Stitching (Fixes 5+ Minute Audio Distortion)
+- **Root Cause**: Sending very long paragraphs (5+ minutes of speech) to Gemini TTS models in a single request caused autoregressive audio degradation toward the end of the generation, resulting in distorted, crackly, or muffled audio.
+- **Intelligent Text Chunking**: Texts exceeding `1,800` characters (~2 minutes of speech per segment) are now automatically split at natural paragraph, sentence, or whitespace boundaries without breaking inline vocal tags (`<...>`), supporting both English and Thai scripts. Short and medium texts still run in a single request with zero added latency.
+- **Model Consistency Locking**: Locks onto the first working TTS model across all chunks in a generation so vocal timbre and style remain consistent from start to finish.
+- **Click-Free PCM Stitching**: Applies 5ms micro fade-in/fade-out edges on each 16-bit PCM segment and inserts natural conversational pauses (`0.16s` for single-speaker, `0.14s` for multi-speaker) before wrapping into a single RIFF WAV file.
+- **Multi-Speaker Long Dialogue Support**: Extended automatic batching and sub-chunking to 1-speaker, 2-speaker, and 3+ speaker dialogues.
 
 ---
 
-### 3. 🎛️ Studio Audio Player Transport Deck Redesign
-Integrated a non-blocking, professional audio transport bar across all primary studio views (**Single-Speaker**, **Multi-Speaker Dialogue**, **Voice Design**, and **Recent Generations History Ctrl+H**):
-- **Play / Pause / Resume Toggle (`Alt+P`)**: Seamlessly toggles playback state with dynamic label and button styling.
-- **Dedicated Stop Button (`Alt+Q`)**: Instantly halts playback and resets position to `00:00`.
-- **Rewind & Fast-Forward 5s (`F7` / `F8`)**: Skips backwards or forwards by 5 seconds with precision.
-- **Interactive Seek Timeline Slider**: Real-time position scrubbing with high-contrast accessible `MM:SS / MM:SS` time display.
-- **Volume Control (`F9` Volume Down / `F10` Volume Up)**: Granular volume control from 0% to 100% saved automatically to user settings.
-- **Playback Speed Selector (`Ctrl+Shift+P`)**: Choose between 5 speed presets: `0.75x`, `1.0x (Normal)`, `1.25x`, `1.5x`, and `2.0x`.
-- **Loop Playback Mode (`Ctrl+L`)**: Continuous looping for acoustic review and prompt tuning.
+### 2. 🔊 Studio Audio Player Optimization for Extended Playback (10+ Minutes)
+- **Glitch-Free PortAudio Buffering**: Increased streaming chunk size from `1024` to `4096` frames (~170ms at 24kHz) and enabled high-latency output buffering (`blocksize=2048, latency="high"` with automatic fallback) to prevent buffer underruns during 10+ minute playback.
+- **Continuous-Phase Linear Interpolation**: Upgraded playback speed resampling (`0.75x` – `2.0x`) from per-chunk nearest-neighbor to continuous-phase linear interpolation with lookahead frame smoothing, eliminating boundary clicks and metallic artifacts.
+- **Zero UI / Accessibility Event Storm**: Throttled playback transport updates to `0.25s` and added state-diffing in the Audio Transport Bar so buttons, sliders, and labels only update when their values actually change—eliminating redundant Win32/UIA screen reader events and GDI repaints during long playback.
 
 ---
 
-### 4. 🚀 Startup Resilience & Diagnostic Environment Checker
-- **Cross-Platform Accessibility Safety**: Fully guarded `ctypes.windll` and `winsound` calls in `announcer.py` for safe execution across all environments.
-- **`wx.App` Initialization Lifecycle Fix**: Guaranteed wx application lifecycle initialization before window construction.
-- **Integrated Health Check (`Test.bat` / `test_gemvox.py`)**: One-click environment diagnostic verifying Python, wxPython, google-genai, sounddevice, and accessible dialogs.
-- **Direct GitHub Auto-Updater (`Ctrl+U`)**: Checks for updates, downloads, and reinstalls new releases directly from GitHub.
-
----
-
-## ⌨️ Essential Keyboard Shortcuts
-- **`Ctrl+Enter` / `Alt+G`**: Synthesize Speech / Multi-Speaker Dialogue / Voice Design
-- **`Alt+P`**: Play / Pause / Resume
-- **`Alt+Q`**: Stop and reset to 00:00
-- **`F7` / `F8`**: Rewind 5s (-5s) / Fast-Forward 5s (+5s)
-- **`F9` / `F10`**: Decrease Volume (-10%) / Increase Volume (+10%)
-- **`Ctrl+L`**: Toggle Loop Playback
-- **`Ctrl+Shift+P`**: Cycle Playback Speed (0.75x - 2.0x)
-- **`Ctrl+S`**: Save current audio file as WAV
-- **`Ctrl+H`**: Open Generation History Dialog
-- **`Ctrl+U`**: Check for Updates directly from GitHub
-- **`Ctrl+1 .. 6`**: Switch studio tabs
-- **`F1`**: Open Comprehensive User Guide
-
----
-
-## 📦 Download Assets:
-- **`Gemvox_Standalone.exe`**: Single-file portable executable (No installation required)
-- **`Gemvox_v1.1.8_Portable.zip`**: Complete portable directory including Screen Reader client DLLs (NVDA 32/64-bit) and portable configuration
+### 3. 🔄 Automatic Startup Update Checker
+- **Silent Background Check on Launch**: Gemvox now checks GitHub for newer releases automatically in the background when launched (or right after completing the first-run Welcome Tour).
+- **Zero-Interruption Behavior**: If a newer version is found, the Auto-Updater dialog opens immediately with pre-loaded release notes ready to install; if you are already up to date (or offline), it stays silent and does nothing.
+- **Manual Check Preserved**: Press `Ctrl+U` (or use **Help → Check for Updates...** / Settings) anytime to check manually. Controlled by `auto_check_updates` (enabled by default).
