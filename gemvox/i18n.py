@@ -23,8 +23,10 @@ TRANSLATIONS = {
 
         # Menus
         "menu_file": "&File",
-        "menu_open_script": "&Open Text / Script File...\tCtrl+O",
-        "menu_open_script_help": "Load a .txt file into the current tab's text or script box",
+        "menu_open_script": "&Open Document / Script File...\tCtrl+O",
+        "menu_open_script_help": "Load a .txt, .md, .docx, .pdf, or .html file into the current tab",
+        "menu_open_url": "Open &Google Docs / Web URL...\tCtrl+G",
+        "menu_open_url_help": "Fetch text from a Google Docs link or web page URL",
         "menu_save_script": "Save Text / Script &File As...\tCtrl+Shift+S",
         "menu_save_script_help": "Save the current text or dialogue script as a .txt file",
         "menu_save_audio": "&Save Audio As...\tCtrl+S",
@@ -371,9 +373,26 @@ TRANSLATIONS = {
         "announce_toggle_autoplay_on": "Autoplay enabled.",
         "announce_toggle_autoplay_off": "Autoplay disabled.",
         "announce_opened_output_dir": "Opened output folder: {path}",
-        "dlg_open_script_title": "Open Text or Dialogue Script File",
+        "dlg_open_script_title": "Open Document or Dialogue Script File",
         "dlg_save_script_title": "Save Text or Dialogue Script File As",
         "announce_script_error": "File error: {error}",
+        "dlg_open_url_title": "Open Google Docs / Web URL",
+        "lbl_open_url_prompt": "Document or Web &URL:",
+        "lbl_open_url_hint": "Supports Google Docs links (shared as 'Anyone with the link can view') and standard web pages.",
+        "btn_load_url": "&Load Document",
+        "announce_loading_url": "Fetching document from URL, please wait...",
+        "announce_url_loaded": "Loaded document from {source}",
+        "gdocs_restricted_title": "Google Docs Access Restricted",
+        "gdocs_restricted_msg": (
+            "Cannot access this Google Docs file because its sharing permissions are restricted.\n\n"
+            "How to allow access:\n"
+            "1. Open the document in Google Docs.\n"
+            "2. Click 'Share' at the top right.\n"
+            "3. Under 'General access', change from 'Restricted' to 'Anyone with the link'.\n"
+            "4. Set the role to 'Viewer', copy the link, and try again."
+        ),
+        "gdocs_not_found_msg": "The Google Docs document was not found (404). Please verify the link is correct and not deleted.",
+        "gdocs_invalid_url_msg": "Invalid URL. Please enter a valid https://docs.google.com/document/d/... link or web URL.",
     },
 
     "th": {
@@ -405,8 +424,10 @@ TRANSLATIONS = {
 
         # Menus
         "menu_file": "ไฟล์ (&File)",
-        "menu_open_script": "เปิดไฟล์ข้อความ / สคริปต์ (&Open)...\tCtrl+O",
-        "menu_open_script_help": "โหลดไฟล์ข้อความ .txt เข้าสู่ช่องข้อความของแท็บปัจจุบัน",
+        "menu_open_script": "เปิดไฟล์เอกสาร / สคริปต์ (&Open)...\tCtrl+O",
+        "menu_open_script_help": "โหลดไฟล์ .txt, .md, .docx, .pdf หรือ .html เข้าสู่แท็บปัจจุบัน",
+        "menu_open_url": "เปิดลิงก์ &Google Docs / เว็บเพจ...\tCtrl+G",
+        "menu_open_url_help": "ดึงข้อความจากลิงก์ Google Docs หรือหน้าเว็บเข้าสู่แท็บปัจจุบัน",
         "menu_save_script": "บันทึกข้อความ / สคริปต์เป็นไฟล์ (&File)...\tCtrl+Shift+S",
         "menu_save_script_help": "บันทึกข้อความหรือสคริปต์บทสนทนาปัจจุบันเป็นไฟล์ .txt",
         "menu_save_audio": "บันทึกเสียงเป็น (&Save)...\tCtrl+S",
@@ -753,9 +774,26 @@ TRANSLATIONS = {
         "announce_toggle_autoplay_on": "เปิดการเล่นเสียงอัตโนมัติแล้ว",
         "announce_toggle_autoplay_off": "ปิดการเล่นเสียงอัตโนมัติแล้ว",
         "announce_opened_output_dir": "เปิดโฟลเดอร์บันทึกไฟล์เสียง: {path}",
-        "dlg_open_script_title": "เปิดไฟล์ข้อความหรือสคริปต์บทสนทนา",
+        "dlg_open_script_title": "เปิดไฟล์เอกสารหรือสคริปต์บทสนทนา",
         "dlg_save_script_title": "บันทึกไฟล์ข้อความหรือสคริปต์บทสนทนาเป็น",
         "announce_script_error": "เกิดข้อผิดพลาดของไฟล์: {error}",
+        "dlg_open_url_title": "เปิดลิงก์ Google Docs / เว็บเพจ",
+        "lbl_open_url_prompt": "ลิงก์เอกสารหรือเว็บเพจ (&URL):",
+        "lbl_open_url_hint": "รองรับลิงก์ Google Docs (ที่ตั้งค่าแชร์เป็น 'ทุกคนที่มีลิงก์สามารถอ่านได้') และหน้าเว็บทั่วไป",
+        "btn_load_url": "ดึงข้อความ (&Load)",
+        "announce_loading_url": "กำลังดึงข้อมูลเอกสารจากลิงก์ กรุณารอสักครู่...",
+        "announce_url_loaded": "ดึงข้อความจาก {source} เรียบร้อยแล้ว",
+        "gdocs_restricted_title": "ไม่สามารถเข้าถึงไฟล์ Google Docs ได้",
+        "gdocs_restricted_msg": (
+            "ไม่สามารถเปิดไฟล์ Google Docs นี้ได้ เนื่องจากไฟล์ถูกปิดกั้นหรือจำกัดสิทธิ์การเข้าถึง\n\n"
+            "คำแนะนำในการเปิดสิทธิ์:\n"
+            "1. เปิดเอกสารดังกล่าวใน Google Docs\n"
+            "2. กดปุ่ม 'แชร์' (Share) ที่มุมขวาบน\n"
+            "3. ในหัวข้อ 'การเข้าถึงทั่วไป' (General access) เปลี่ยนจาก 'จำกัด' (Restricted) เป็น 'ทุกคนที่มีลิงก์' (Anyone with the link)\n"
+            "4. ตั้งสิทธิ์เป็น 'ผู้มีสิทธิ์อ่าน' (Viewer) จากนั้นคัดลอกลิงก์มาลองใหม่อีกครั้ง"
+        ),
+        "gdocs_not_found_msg": "ไม่พบเอกสาร Google Docs ตามลิงก์นี้ (404) กรุณาตรวจสอบว่าลิงก์ถูกต้องและไฟล์ยังไม่ถูกลบ",
+        "gdocs_invalid_url_msg": "รูปแบบลิงก์ไม่ถูกต้อง กรุณากรอกลิงก์ Google Docs (https://docs.google.com/document/d/...) หรือ URL ที่ขึ้นต้นด้วย https://",
     }
 }
 

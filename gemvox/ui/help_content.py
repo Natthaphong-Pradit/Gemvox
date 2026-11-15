@@ -42,9 +42,10 @@ WELCOME_TOUR_STEPS = {
                 "until you press Tab (or a direct shortcut like Alt+X) to enter the workspace.\n"
                 "  3. In Single Speaker TTS, press Alt+X to focus the text box and type your script, optionally press Alt+I "
                 "to insert vocal tags (<sigh>, <laugh>, <short pause>), or press Alt+B to pick a delivery style.\n"
-                "  4. Press Ctrl+Enter (or Alt+G) to synthesize speech!\n"
-                "  5. Press Alt+P to Play/Stop audio, and Ctrl+S to save as a 24kHz WAV file.\n"
-                "  6. Press F1 at any time to open the systematic step-by-step User Guide."
+                "  4. You can also load existing documents (.txt, .md, .docx, .pdf, .html) with Ctrl+O, or fetch a shared Google Docs link with Ctrl+G.\n"
+                "  5. Press Ctrl+Enter (or Alt+G) to synthesize speech!\n"
+                "  6. Press Alt+P to Play/Stop audio, and Ctrl+S to save as a 24kHz WAV file.\n"
+                "  7. Press F1 at any time to open the systematic step-by-step User Guide."
             )
         }
     ],
@@ -86,9 +87,10 @@ WELCOME_TOUR_STEPS = {
                 "  2. เมื่อเลื่อนดูแท็บด้วยลูกศรซ้าย/ขวา โฟกัสจะล็อกอยู่บนหัวแท็บก่อนเสมอ เมื่อต้องการเข้าใช้งานจึงค่อยกดปุ่ม Tab (หรือกดคีย์ลัดอย่าง Alt+X เพื่อกระโดดเข้าช่องข้อความทันที)\n"
                 "  3. ในหน้าเสียงพูดเดี่ยว กด Alt+X เพื่อเข้าช่องพิมพ์ข้อความ กด Alt+I เพื่อแทรกแท็กเสียงธรรมชาติ (<sigh>, <laugh>, <short pause>) "
                 "หรือกด Alt+B เพื่อเลือกพรีเซ็ตอารมณ์เสียง\n"
-                "  4. กด Ctrl+Enter (หรือ Alt+G) เพื่อสั่งสังเคราะห์เสียงทันที!\n"
-                "  5. กด Alt+P เพื่อเล่นหรือหยุดเสียง และกด Ctrl+S เพื่อบันทึกเป็นไฟล์ WAV\n"
-                "  6. กดปุ่ม F1 ได้ตลอดเวลาเพื่อเปิดคู่มือการใช้งานอย่างเป็นระบบ"
+                "  4. คุณยังสามารถโหลดไฟล์เอกสาร (.txt, .md, .docx, .pdf, .html) ด้วยปุ่ม Ctrl+O หรือดึงข้อความจากลิงก์ Google Docs ด้วย Ctrl+G\n"
+                "  5. กด Ctrl+Enter (หรือ Alt+G) เพื่อสั่งสังเคราะห์เสียงทันที!\n"
+                "  6. กด Alt+P เพื่อเล่นหรือหยุดเสียง และกด Ctrl+S เพื่อบันทึกเป็นไฟล์ WAV\n"
+                "  7. กดปุ่ม F1 ได้ตลอดเวลาเพื่อเปิดคู่มือการใช้งานอย่างเป็นระบบ"
             )
         }
     ]
@@ -146,7 +148,11 @@ HELP_SECTIONS = {
                 "  2. You can also cycle tabs using Ctrl+Tab (Next) and Ctrl+Shift+Tab (Previous).\n"
                 "  3. When a tab is selected, focus stays cleanly locked on the Tab Control header.\n"
                 "  4. Use Left/Right Arrow keys to browse tabs, then press TAB (or any direct control shortcut "
-                "such as Alt+X) when you are ready to enter the controls inside that tab."
+                "such as Alt+X) when you are ready to enter the controls inside that tab.\n\n"
+                "NATIVE TEXT AREA & AUTOMATIC FOCUS RECOVERY (v1.2.1):\n"
+                "  * Multiline text boxes use native Win32 RICHEDIT50W for accurate blank-line and word/line reading.\n"
+                "  * When switching away to another window (Alt+Tab) and returning, or closing a dialog, Gemvox "
+                "automatically re-syncs QAccessible/Win32 focus so screen reader announcements resume smoothly."
             )
         },
         {
@@ -164,11 +170,14 @@ HELP_SECTIONS = {
                 "  3. Select Model (Alt+M) & Voice (Alt+V):\n"
                 "     * Choose between Gemini 3.8 Flash TTS (studio fidelity) or Flash-Lite (ultra-fast).\n"
                 "     * Press Alt+U ('Audition Voice') to hear a preview of the selected voice.\n"
-                "  4. Set Style / Emotion (Alt+Y):\n"
-                "     * Type any natural instruction (e.g., 'cheerful and friendly', 'whispered urgently').\n"
-                "     * Press Alt+B ('Browse Styles') to pick from curated or custom presets.\n"
-                "     * Press Alt+C ('Create Custom Style') to save your own style preset for instant reuse.\n"
-                "  5. Generate (Ctrl+Enter / Alt+G): Synthesizes and saves the WAV file automatically."
+                "  4. Press Alt+B ('Browse Styles') or Alt+C ('Create Custom Style') for reusable presets.\n"
+                "  5. Generate (Ctrl+Enter / Alt+G): Synthesizes and saves the WAV file automatically.\n\n"
+                "LOADING DOCUMENTS & GOOGLE DOCS LINKS:\n"
+                "  * Press Ctrl+O (File -> Open Document / Script File...) to import .txt, .md, .script, "
+                ".docx (Word), .pdf, or .html/.htm files directly into the active tab.\n"
+                "  * Press Ctrl+G (File -> Open Google Docs / Web URL...) to fetch text from a Google Docs link "
+                "or web page. For Google Docs, make sure sharing is set to 'Anyone with the link -> Viewer'; "
+                "if restricted, Gemvox will alert you with step-by-step sharing instructions."
             )
         },
         {
@@ -236,7 +245,8 @@ HELP_SECTIONS = {
                 "  * Ctrl+L              : Toggle Loop Playback On / Off\n"
                 "  * Ctrl+Shift+P        : Cycle Playback Speed (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
                 "  * Ctrl+S              : Save current audio as WAV file\n"
-                "  * Ctrl+O              : Open / Load .txt script file into active tab\n"
+                "  * Ctrl+O              : Open / Load document (.txt, .md, .docx, .pdf, .html) into active tab\n"
+                "  * Ctrl+G              : Open Google Docs link or Web URL into active tab\n"
                 "  * Ctrl+Shift+S        : Save current text or dialogue script as .txt file\n"
                 "  * Ctrl+H              : Open Recent Generations History dialog\n"
                 "  * Ctrl+Shift+O        : Open Audio Output Folder in File Explorer\n"
@@ -317,7 +327,10 @@ HELP_SECTIONS = {
                 "  1. กด Ctrl+1 ถึง Ctrl+6 (หรือ Alt+1 ถึง Alt+6) เพื่อสลับไปยังแท็บที่ 1 ถึง 6 ได้ทันที (หรือกด Alt+T เพื่อเปิดเมนูแท็บ)\n"
                 "  2. หรือกด Ctrl+Tab (แท็บถัดไป) และ Ctrl+Shift+Tab (แท็บก่อนหน้า)\n"
                 "  3. เมื่อสลับแท็บ โฟกัสจะถูกล็อกไว้ที่หัวแท็บ (Tab Control) ก่อนเสมอ ไม่กระโดดเข้าข้างในเอง\n"
-                "  4. คุณสามารถกดลูกศรซ้าย/ขวาเพื่อสำรวจชื่อแท็บ และเมื่อต้องการเข้าใช้งานจึงค่อยกดปุ่ม Tab (หรือกดคีย์ลัดของคอนโทรล เช่น Alt+X ได้ทันที)"
+                "  4. คุณสามารถกดลูกศรซ้าย/ขวาเพื่อสำรวจชื่อแท็บ และเมื่อต้องการเข้าใช้งานจึงค่อยกดปุ่ม Tab (หรือกดคีย์ลัดของคอนโทรล เช่น Alt+X ได้ทันที)\n\n"
+                "ช่องพิมพ์ข้อความ NATIVE และการคืนค่าโฟกัสอัตโนมัติ (v1.2.1):\n"
+                "  * ช่องพิมพ์ข้อความหลายบรรทัดใช้ Win32 RICHEDIT50W เพื่อให้ Screen Reader อ่านบรรทัดว่าง (blank) และเลื่อนเคอร์เซอร์ได้แม่นยำ\n"
+                "  * เมื่อสลับหน้าต่างไปโปรแกรมอื่น (Alt+Tab) แล้วกลับมา หรือหลังปิดหน้าต่างย่อย โปรแกรมจะคืนค่าโฟกัสให้ QAccessible/Win32 อัตโนมัติ"
             )
         },
         {
@@ -338,7 +351,11 @@ HELP_SECTIONS = {
                 "  4. กำหนดอารมณ์ / สไตล์การพูด (Alt+Y):\n"
                 "     * พิมพ์คำสั่งอารมณ์ได้อิสระ หรือกด Alt+B ('เลือกสไตล์') เพื่อเลือกจากรายการพรีเซ็ต\n"
                 "     * กด Alt+C ('สร้างสไตล์ส่วนตัว') เพื่อบันทึกสไตล์ที่ใช้บ่อยเก็บไว้ใช้ซ้ำโดยไม่ต้องพิมพ์ใหม่\n"
-                "  5. สังเคราะห์เสียง (Ctrl+Enter / Alt+G): ประมวลผลและเล่นเสียงอัตโนมัติ"
+                "  5. สังเคราะห์เสียง (Ctrl+Enter / Alt+G): ประมวลผลและเล่นเสียงอัตโนมัติ\n\n"
+                "การนำเข้าไฟล์เอกสารและลิงก์ GOOGLE DOCS:\n"
+                "  * กด Ctrl+O (ไฟล์ -> เปิดไฟล์เอกสาร / สคริปต์...) เพื่อดึงข้อความจากไฟล์ .txt, .md, .script, .docx (Word), .pdf และ .html/.htm\n"
+                "  * กด Ctrl+G (ไฟล์ -> เปิดลิงก์ Google Docs / เว็บเพจ...) เพื่อดึงข้อความจากลิงก์ Google Docs หรือหน้าเว็บ\n"
+                "  * หมายเหตุสำหรับ Google Docs: เอกสารต้องตั้งค่าแชร์เป็น 'ทุกคนที่มีลิงก์สามารถอ่านได้' (Anyone with the link -> Viewer) หากไฟล์ถูกปิดกั้นสิทธิ์ โปรแกรมจะแจ้งเตือนพร้อมคำแนะนำการเปิดสิทธิ์ให้ทันที"
             )
         },
         {
@@ -405,7 +422,8 @@ HELP_SECTIONS = {
                 "  * Ctrl+L              : เปิด/ปิดโหมดเล่นวนซ้ำ (Loop Playback)\n"
                 "  * Ctrl+Shift+P        : สลับความเร็วการเล่นเสียง (0.75x, 1.0x, 1.25x, 1.5x, 2.0x)\n"
                 "  * Ctrl+S              : บันทึกไฟล์เสียงปัจจุบันเป็นไฟล์ WAV\n"
-                "  * Ctrl+O              : เปิดไฟล์ข้อความ / สคริปต์ (.txt) เข้าสู่แท็บปัจจุบัน\n"
+                "  * Ctrl+O              : เปิดไฟล์เอกสาร / สคริปต์ (.txt, .md, .docx, .pdf, .html) เข้าสู่แท็บปัจจุบัน\n"
+                "  * Ctrl+G              : เปิดลิงก์ Google Docs หรือเว็บเพจเข้าสู่แท็บปัจจุบัน\n"
                 "  * Ctrl+Shift+S        : บันทึกข้อความหรือสคริปต์บทสนทนาเป็นไฟล์ .txt\n"
                 "  * Ctrl+H              : เปิดหน้าต่างประวัติไฟล์เสียงที่สร้างล่าสุด (History)\n"
                 "  * Ctrl+Shift+O        : เปิดโฟลเดอร์เก็บไฟล์เสียง (Output Folder) ใน File Explorer\n"

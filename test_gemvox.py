@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Gemvox v1.2.0 Diagnostic, Universal Design & Accessibility Verification Test Script.
+Gemvox v1.2.1 Diagnostic, Universal Design & Accessibility Verification Test Script.
 Validates Python runtime, required packages, PySide6 GUI widgets,
 UIA/MSAA accessibility metadata, wx-compatible keyboard navigation,
-Gemini TTS engine, and Studio Audio Player deck.
+document loaders (TXT/HTML/DOCX/PDF/Google Docs), Gemini TTS engine, and Audio Player.
 """
 
 import sys
@@ -63,7 +63,7 @@ def _verify_accessibility(root_widget) -> tuple[bool, str]:
 
 def main():
     print("=" * 65)
-    print(" GEMVOX v1.2.0 DIAGNOSTIC & UNIVERSAL DESIGN TEST")
+    print(" GEMVOX v1.2.1 DIAGNOSTIC & UNIVERSAL DESIGN TEST")
     print("=" * 65)
     all_ok = True
 
@@ -120,7 +120,7 @@ def main():
         try:
             from PySide6.QtCore import Qt
             from PySide6.QtWidgets import QApplication
-            from gemvox.ui.theme import build_studio_stylesheet
+            from gemvox.ui.theme import build_studio_stylesheet, refresh_accessible_focus
             from gemvox.ui.main_window import MainWindow
             from gemvox.ui.dialogs import (
                 HelpDialog,
@@ -129,6 +129,7 @@ def main():
                 CreateCustomStyleDialog,
                 WelcomeTourDialog,
                 GenerationHistoryDialog,
+                OpenGoogleDocsDialog,
                 UpdateDialog,
             )
 
@@ -163,7 +164,7 @@ def main():
             if not acc_ok:
                 all_ok = False
 
-            # Instantiate & audit all 7 dialogs
+            # Instantiate & audit all 8 dialogs
             for Dlg in (
                 HelpDialog,
                 InlineTagDialog,
@@ -171,6 +172,7 @@ def main():
                 CreateCustomStyleDialog,
                 WelcomeTourDialog,
                 GenerationHistoryDialog,
+                OpenGoogleDocsDialog,
                 UpdateDialog,
             ):
                 d = Dlg(win)
@@ -180,6 +182,11 @@ def main():
                     all_ok = False
                 d.close()
                 d.deleteLater()
+
+            # Verify focus refresh & recovery helpers do not raise
+            refresh_accessible_focus(win.tabs.tabBar(), force_nudge=True)
+            refresh_accessible_focus(win.tab_single.text_ctrl, force_nudge=True)
+            win._restore_accessibility_focus()
 
             win.close()
             win.deleteLater()
@@ -191,9 +198,131 @@ def main():
             print_result("PySide6 Universal Design UI & Dialogs Instantiation", False, str(e))
             all_ok = False
 
+    # 7. Document Loader Verification (TXT, HTML, DOCX, PDF, Google Docs)
+    try:
+        import tempfile
+        import urllib.request
+        from pathlib import Path
+        from unittest.mock import patch
+        from gemvox.core.document_loader import (
+            GoogleDocsAccessError,
+            extract_google_doc_info,
+            load_document_from_file,
+            load_document_from_url,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            # TXT
+            txt_p = tmp / "sample.txt"
+            txt_p.write_text("Hello Gemvox 1.2.1", encoding="utf-8")
+            assert load_document_from_file(txt_p) == "Hello Gemvox 1.2.1"
+
+            # HTML
+            html_p = tmp / "sample.html"
+            html_p.write_text(
+                "<html><head><style>p{color:red}</style></head>"
+                "<body><script>alert(1)</script><h1>Title</h1><p>Body text</p></body></html>",
+                encoding="utf-8",
+            )
+            html_out = load_document_from_file(html_p)
+            assert "Title" in html_out and "Body text" in html_out and "alert(1)" not in html_out
+
+            # DOCX
+            import docx
+            docx_p = tmp / "sample.docx"
+            doc = docx.Document()
+            doc.add_paragraph("DOCX Paragraph One")
+            doc.save(str(docx_p))
+            assert "DOCX Paragraph One" in load_document_from_file(docx_p)
+
+            # PDF (via minimal valid PDF bytes)
+            pdf_p = tmp / "sample.pdf"
+            minimal_pdf = (
+                b"%PDF-1.4\n"
+                b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+                b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+                b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] "
+                b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n"
+                b"4 0 obj << /Length 44 >> stream\n"
+                b"BT /F1 12 Tf 10 100 Td (Hello PDF) Tj ET\n"
+                b"endstream endobj\n"
+                b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
+                b"xref\n0 6\n0000000000 65535 f \n"
+                b"0000000009 00000 n \n0000000058 00000 n \n"
+                b"0000000115 00000 n \n0000000241 00000 n \n"
+                b"0000000335 00000 n \n"
+                b"trailer << /Size 6 /Root 1 0 R >>\nstartxref\n405\n%%EOF\n"
+            )
+            pdf_p.write_bytes(minimal_pdf)
+            assert "Hello PDF" in load_document_from_file(pdf_p)
+
+        # Google Docs URL parsing & restricted-access detection
+        doc_id, is_pub = extract_google_doc_info("https://docs.google.com/document/d/AbC123_xyz/edit?usp=sharing")
+        assert doc_id == "AbC123_xyz" and not is_pub
+
+        class _FakeResp:
+            def __init__(self, url, ct, data):
+                self._url = url
+                self.headers = _FakeHeaders(ct)
+                self._data = data
+            def geturl(self):
+                return self._url
+            def read(self):
+                return self._data
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        class _FakeHeaders:
+            def __init__(self, ct):
+                self._ct = ct
+            def get(self, k, default=""):
+                return self._ct if k.lower() == "content-type" else default
+            def get_content_charset(self):
+                return "utf-8"
+
+        # Accessible Google Doc
+        with patch.object(
+            urllib.request,
+            "urlopen",
+            return_value=_FakeResp(
+                "https://docs.google.com/document/d/AbC123_xyz/export?format=txt",
+                "text/plain; charset=utf-8",
+                b"\xef\xbb\xbfShared Google Doc Content",
+            ),
+        ):
+            g_text, _ = load_document_from_url("https://docs.google.com/document/d/AbC123_xyz/edit")
+            assert g_text == "Shared Google Doc Content"
+
+        # Restricted Google Doc (redirected to accounts.google.com)
+        restricted_raised = False
+        with patch.object(
+            urllib.request,
+            "urlopen",
+            return_value=_FakeResp(
+                "https://accounts.google.com/v3/signin/identifier",
+                "text/html; charset=utf-8",
+                b"<html><body>Sign in</body></html>",
+            ),
+        ):
+            try:
+                load_document_from_url("https://docs.google.com/document/d/AbC123_xyz/edit")
+            except GoogleDocsAccessError as exc:
+                restricted_raised = exc.reason == "restricted"
+        assert restricted_raised, "Expected GoogleDocsAccessError('restricted')"
+
+        print_result("Document Loader (TXT, HTML, DOCX, PDF, Google Docs)", True)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print_result("Document Loader (TXT, HTML, DOCX, PDF, Google Docs)", False, str(e))
+        all_ok = False
+
     print("=" * 65)
     if all_ok:
-        print(" ALL DIAGNOSTIC TESTS PASSED! Gemvox v1.2.0 is ready to run.")
+        print(" ALL DIAGNOSTIC TESTS PASSED! Gemvox v1.2.1 is ready to run.")
         print(" You can start Gemvox normally using 'Gemvox.bat' or 'python gemvox.py'.")
     else:
         print(" SOME CHECKS FAILED. Please review the missing dependencies above.")

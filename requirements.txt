@@ -3,3 +3,6 @@ PySide6>=6.7.0
 sounddevice>=0.5.0
 pywin32>=306
 python-dotenv>=1.0.0
+python-docx>=1.1.0
+beautifulsoup4>=4.12.0
+pypdf>=4.0.0

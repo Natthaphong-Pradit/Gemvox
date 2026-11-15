@@ -1,6 +1,7 @@
 from pathlib import Path
 import threading
-from PySide6.QtCore import QEvent, Qt
+import weakref
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,6 +23,7 @@ from gemvox.config import config
 from gemvox.i18n import tr
 from gemvox.accessibility import announcer
 from gemvox.core.audio_player import audio_player
+from gemvox.core.document_loader import get_document_file_filter, load_document_from_file
 from gemvox.core.updater import check_for_updates
 from gemvox.ui.single_speaker_panel import SingleSpeakerPanel
 from gemvox.ui.multi_speaker_panel import MultiSpeakerPanel
@@ -34,6 +36,7 @@ from gemvox.ui.dialogs import (
     HelpDialog,
     WelcomeTourDialog,
     GenerationHistoryDialog,
+    OpenGoogleDocsDialog,
     UpdateDialog,
     open_output_folder,
 )
@@ -43,13 +46,14 @@ from gemvox.ui.theme import (
     call_after,
     clean_mnemonic,
     create_app_icon,
+    refresh_accessible_focus,
     style_label,
 )
 
 
 class MainWindow(QMainWindow):
     """
-    Main window of Gemvox v1.2.0 (Universal Design PySide6 Edition).
+    Main window of Gemvox v1.2.1 (Universal Design PySide6 Edition).
     Combines full screen reader accessibility (UIA/MSAA metadata, direct screen reader
     announcer, wx-compatible tab-bar & Alt+Mnemonic keyboard navigation) with a
     modern Obsidian & Royal Gold studio interface for sighted creators.
@@ -76,6 +80,11 @@ class MainWindow(QMainWindow):
         ]
         self._alive = True
         self._startup_update_checked = False
+        self._last_focus_ref = None
+        self._focus_restore_timer = QTimer(self)
+        self._focus_restore_timer.setSingleShot(True)
+        self._focus_restore_timer.setInterval(40)
+        self._focus_restore_timer.timeout.connect(self._restore_accessibility_focus)
 
         self._init_menu()
         self._init_ui()
@@ -83,6 +92,7 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
+            app.focusChanged.connect(self._on_app_focus_changed)
 
         # Initial voice announcement & focus on tab bar
         self.tabs.tabBar().setFocus()
@@ -95,10 +105,49 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._alive = False
+        self._focus_restore_timer.stop()
         app = QApplication.instance()
         if app is not None:
             app.removeEventFilter(self)
+            try:
+                app.focusChanged.disconnect(self._on_app_focus_changed)
+            except Exception:
+                pass
         super().closeEvent(event)
+
+    def _on_app_focus_changed(self, old, new):
+        if not self._alive or new is None:
+            return
+        try:
+            if new.window() is self and new is not self:
+                self._last_focus_ref = weakref.ref(new)
+        except RuntimeError:
+            pass
+
+    def _schedule_accessibility_focus_restore(self):
+        if self._alive and not self._focus_restore_timer.isActive():
+            self._focus_restore_timer.start()
+
+    def _restore_accessibility_focus(self):
+        """Gently re-sync QAccessible/Win32 focus after window switching without focus ping-pong."""
+        if not self._alive or not self.isActiveWindow():
+            return
+        if QApplication.activeModalWidget() is not None or QApplication.activePopupWidget() is not None:
+            return
+
+        target = QApplication.focusWidget()
+        if target is None or target is self:
+            active_ed = AccessibleTextArea.active_editor()
+            if active_ed is not None and active_ed.window() is self and active_ed.isVisible() and active_ed.isEnabled():
+                target = active_ed
+            elif self._last_focus_ref is not None:
+                last_w = self._last_focus_ref()
+                if last_w is not None and last_w.window() is self and last_w.isVisible() and last_w.isEnabled():
+                    target = last_w
+        if target is None or target is self:
+            target = self.tabs.tabBar()
+
+        refresh_accessible_focus(target, force_nudge=False)
 
     def _show_first_run_welcome_tour(self):
         if not self._alive:
@@ -141,6 +190,7 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = menu_bar.addMenu(tr("menu_file"))
         m_open_script = file_menu.addAction(tr("menu_open_script"))
+        m_open_url = file_menu.addAction(tr("menu_open_url"))
         m_save_script = file_menu.addAction(tr("menu_save_script"))
         file_menu.addSeparator()
         m_save = file_menu.addAction(tr("menu_save_audio"))
@@ -209,6 +259,7 @@ class MainWindow(QMainWindow):
 
         # Connections
         m_open_script.triggered.connect(self.on_menu_open_script)
+        m_open_url.triggered.connect(self.on_menu_open_url)
         m_save_script.triggered.connect(self.on_menu_save_script)
         m_save.triggered.connect(self.on_menu_save)
         m_history.triggered.connect(self.on_menu_history)
@@ -324,6 +375,9 @@ class MainWindow(QMainWindow):
         if not self._alive:
             return False
         etype = event.type()
+        if etype == QEvent.WindowActivate and watched is self:
+            self._schedule_accessibility_focus_restore()
+            return False
         if etype not in (QEvent.KeyPress, QEvent.ShortcutOverride):
             return False
         if not self.isActiveWindow():
@@ -373,7 +427,7 @@ class MainWindow(QMainWindow):
         if not ctrl and not alt and not shift and key in (Qt.Key_F1, Qt.Key_F7, Qt.Key_F8, Qt.Key_F9, Qt.Key_F10):
             return True
 
-        if ctrl and not alt and not shift and key in (Qt.Key_O, Qt.Key_S, Qt.Key_H, Qt.Key_I, Qt.Key_U, Qt.Key_L):
+        if ctrl and not alt and not shift and key in (Qt.Key_O, Qt.Key_G, Qt.Key_S, Qt.Key_H, Qt.Key_I, Qt.Key_U, Qt.Key_L):
             return True
 
         if ctrl and shift and not alt and key in (Qt.Key_S, Qt.Key_O, Qt.Key_P):
@@ -474,6 +528,9 @@ class MainWindow(QMainWindow):
         if ctrl and not alt and not shift:
             if key == Qt.Key_O:
                 self.on_menu_open_script()
+                return True
+            if key == Qt.Key_G:
+                self.on_menu_open_url()
                 return True
             if key == Qt.Key_S:
                 self.on_menu_save()
@@ -757,19 +814,19 @@ class MainWindow(QMainWindow):
         if not (0 <= index < count):
             return
         cur = self.tabs.currentIndex()
-        self.tabs.tabBar().setFocus()
+        refresh_accessible_focus(self.tabs.tabBar(), force_nudge=(cur == index))
         if cur == index:
             name = self.tab_names[index] if index < len(self.tab_names) else f"Tab {index + 1}"
             msg = tr("tab_selected_announce", name=name)
             announcer.announce(msg)
             self._set_status_text(msg)
-            call_after(self.tabs.tabBar().setFocus)
+            call_after(lambda: refresh_accessible_focus(self.tabs.tabBar(), force_nudge=True))
         else:
             self.tabs.setCurrentIndex(index)
 
     def on_tab_changed(self, sel: int):
-        self.tabs.tabBar().setFocus()
-        call_after(self.tabs.tabBar().setFocus)
+        refresh_accessible_focus(self.tabs.tabBar())
+        call_after(lambda: refresh_accessible_focus(self.tabs.tabBar(), force_nudge=True))
         if 0 <= sel < len(self.tab_names):
             name = self.tab_names[sel]
             msg = tr("tab_selected_announce", name=name)
@@ -792,7 +849,7 @@ class MainWindow(QMainWindow):
             elif sel == 5:
                 target = self.tab_settings.txt_key
             if target is not None and target.isVisible():
-                target.setFocus()
+                refresh_accessible_focus(target, force_nudge=True)
 
         if immediate:
             _do_focus()
@@ -869,27 +926,30 @@ class MainWindow(QMainWindow):
             self.tab_multi.text_script.setFocus()
             announcer.announce(tr("msg_script_cleared"))
 
+    def _load_extracted_text_into_active_tab(self, content: str):
+        sel = self.tabs.currentIndex()
+        if sel == 1:
+            self.tab_multi.text_script.setPlainText(content)
+            self.tab_multi.update_speaker_controls()
+            refresh_accessible_focus(self.tab_multi.text_script, force_nudge=True)
+        else:
+            if sel != 0:
+                self.switch_tab(0)
+            self.tab_single.text_ctrl.setPlainText(content)
+            refresh_accessible_focus(self.tab_single.text_ctrl, force_nudge=True)
+
     def on_menu_open_script(self, *args):
         path_str, _ = QFileDialog.getOpenFileName(
             self,
             tr("dlg_open_script_title"),
             str(config.output_dir),
-            "Text & Script files (*.txt *.md *.script);;All files (*.*)",
+            get_document_file_filter(),
         )
         if path_str:
             path = Path(path_str)
             try:
-                content = path.read_text(encoding="utf-8")
-                sel = self.tabs.currentIndex()
-                if sel == 1:
-                    self.tab_multi.text_script.setPlainText(content)
-                    self.tab_multi.update_speaker_controls()
-                    self.tab_multi.text_script.setFocus()
-                else:
-                    if sel != 0:
-                        self.switch_tab(0)
-                    self.tab_single.text_ctrl.setPlainText(content)
-                    self.tab_single.text_ctrl.setFocus()
+                content = load_document_from_file(path)
+                self._load_extracted_text_into_active_tab(content)
                 msg = tr("announce_script_loaded", filename=path.name)
                 announcer.announce(msg)
                 self._set_status_text(msg)
@@ -897,6 +957,15 @@ class MainWindow(QMainWindow):
                 err_msg = tr("announce_script_error", error=str(e))
                 announcer.announce(err_msg)
                 self._set_status_text(err_msg)
+                QMessageBox.warning(self, tr("dlg_open_script_title"), err_msg)
+
+    def on_menu_open_url(self, *args):
+        dlg = OpenGoogleDocsDialog(self)
+        if dlg.exec() == OpenGoogleDocsDialog.DialogCode.Accepted and dlg.loaded_text:
+            self._load_extracted_text_into_active_tab(dlg.loaded_text)
+            msg = tr("announce_url_loaded", source=dlg.loaded_source)
+            announcer.announce(msg)
+            self._set_status_text(msg)
 
     def on_menu_save_script(self, *args):
         sel = self.tabs.currentIndex()

@@ -1,17 +1,28 @@
 import re
 from typing import Callable, Optional
 from PySide6.QtCore import Qt, QObject, QRectF, Signal, QCoreApplication
-from PySide6.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QAccessible,
+    QAccessibleEvent,
+    QColor,
+    QFont,
+    QIcon,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
+    QLineEdit,
     QPushButton,
     QWidget,
 )
 from gemvox.config import config
 
 # ========================================================================
-# GEMVOX v1.2.0 - UNIVERSAL DESIGN STUDIO SYSTEM ("OBSIDIAN & ROYAL GOLD")
+# GEMVOX v1.2.1 - UNIVERSAL DESIGN STUDIO SYSTEM ("OBSIDIAN & ROYAL GOLD")
 # ========================================================================
 # Engineered for both:
 # 1. Screen Reader & Keyboard-First Users (UIA/MSAA metadata, QLabel buddies,
@@ -113,6 +124,32 @@ def apply_accessible(
         widget.setAccessibleDescription(description)
     if label is not None:
         label.setBuddy(widget)
+
+
+def refresh_accessible_focus(widget: Optional[QWidget], force_nudge: bool = False):
+    """
+    Ensure a widget has focus and QAccessible / Windows UIA is notified without
+    causing focus ping-pong or stuttering.
+    """
+    if widget is None:
+        return
+    try:
+        if not widget.isVisible() or not widget.isEnabled():
+            return
+    except RuntimeError:
+        return
+    if QApplication.activePopupWidget() is not None:
+        return
+
+    try:
+        if QApplication.focusWidget() is not widget:
+            widget.setFocus(Qt.OtherFocusReason)
+        elif hasattr(widget, "refresh_win32_focus"):
+            widget.refresh_win32_focus(force_nudge=False)
+        elif QAccessible.isActive():
+            QAccessible.updateAccessibility(QAccessibleEvent(widget, QAccessible.Event.Focus))
+    except Exception:
+        pass
 
 
 def style_button(btn: QPushButton, variant: str = "primary", accessible_name: Optional[str] = None):
@@ -292,7 +329,7 @@ class StudioHeaderBanner(QWidget):
 
 
 def build_studio_stylesheet() -> str:
-    """Return the complete Universal Design QSS stylesheet for Gemvox v1.2.0."""
+    """Return the complete Universal Design QSS stylesheet for Gemvox v1.2.1."""
     c = StudioColors
     return f"""
     QMainWindow, QDialog {{

@@ -1,15 +1,15 @@
 # Gemvox: Accessible Gemini Speech Synthesis Studio
 
-**Gemvox** is a lightweight, accessible Windows desktop application and CLI studio designed specifically for **blind and visually impaired creators**. It brings the full expressive power of Google's state-of-the-art **Gemini TTS models** (Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, and 3.8 Flash TTS) into a clean, distraction-free, 100% keyboard-navigable environment.
+**Gemvox** is a lightweight, accessible Windows desktop application and CLI studio designed specifically for **blind and visually impaired creators**, paired with a modern Universal Design interface for sighted producers. It brings the full expressive power of Google's **Gemini TTS models** (Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, and 3.8 Flash TTS) into a clean, distraction-free, 100% keyboard-navigable environment.
 
 ---
 
-## ⚡ Quick Start: Download Ready-to-Use Windows Executables
+## Quick Start: Download Ready-to-Use Windows Executables
 
 > [!TIP]
-> **No Python installation or command-line setup is required!** Pre-compiled, self-contained Windows packages are readily available on our GitHub Releases page.
+> **No Python installation or command-line setup is required.** Pre-compiled, self-contained Windows packages are available on the GitHub Releases page.
 
-👉 **[Download Latest Gemvox Release (v1.1.8)](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
+**[Download Latest Gemvox Release (v1.2.1)](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
 
 You can choose between two convenient download formats:
 
@@ -18,17 +18,17 @@ You can choose between two convenient download formats:
 - Ideal for users who want a quick, clean, and portable setup.
 - Stores user preferences and API keys persistently in `%APPDATA%\Gemvox`.
 
-### 2. Complete Portable Folder Edition (`Gemvox_v1.1.8_Portable.zip`)
+### 2. Complete Portable Folder Edition (`Gemvox_v1.2.1_Portable.zip`)
 - **100% Self-Contained**: Extract the ZIP file to any folder or USB flash drive and run `Gemvox.exe`.
 - **True Portable Mode**: Contains a `portable.txt` flag so that your `config.json` settings, custom vocal personas, and generated `.wav` audio files (`output/` folder) stay inside the application directory without touching your system registry or AppData.
-- **Pre-bundled Screen Reader DLLs**: Includes high-performance 32-bit and 64-bit client libraries for NVDA (`nvdaControllerClient`), JAWS, and ZDSR out of the box.
+- **Pre-bundled Screen Reader DLLs**: Includes 32-bit and 64-bit client libraries for NVDA (`nvdaControllerClient`), JAWS, and ZDSR out of the box.
 
-### 🔄 In-App Auto-Updater (`Ctrl+U`)
-Gemvox features a built-in direct GitHub updater. Whenever a new version is released, simply press **`Ctrl+U`** inside Gemvox. The program will check `https://github.com/Natthaphong-Pradit/Gemvox`, download the latest update, and reinstall it in place automatically without losing your settings or audio files.
+### In-App Auto-Updater (`Ctrl+U`)
+Gemvox features a built-in direct GitHub updater. Whenever a new version is released, press **`Ctrl+U`** inside Gemvox. The program checks `https://github.com/Natthaphong-Pradit/Gemvox`, downloads the latest update, and installs it automatically without losing your settings or audio files.
 
 ---
 
-## 💻 Running from Source (For Developers & Power Users)
+## Running from Source (For Developers & Power Users)
 
 If you prefer running Gemvox directly from the Python source code or contributing to development:
 
@@ -40,8 +40,8 @@ cd Gemvox
 
 ### 2. Automated One-Click Setup & Launch (Recommended)
 Double-click (or press Enter on) the provided batch launchers in File Explorer:
-- **`Gemvox.bat`**: Automatically detects or creates the virtual environment (`venv`), installs missing dependencies from `requirements.txt`, and launches the Accessible GUI.
-- **`Test.bat`**: Runs the comprehensive diagnostic test suite verifying Python runtime, wxPython, google-genai SDK, sounddevice drivers, and UI dialogs.
+- **`Gemvox.bat`**: Automatically detects or creates the virtual environment (`venv`), installs missing dependencies from `requirements.txt`, and launches the Universal Design PySide6 GUI.
+- **`Test.bat`**: Runs the diagnostic test suite verifying Python runtime, PySide6, google-genai SDK, sounddevice drivers, document loaders, and accessibility metadata.
 - **`Gemvox_CLI.bat`**: Launches the accessible, linear interactive terminal menu.
 
 ### 3. Manual Virtual Environment Setup
@@ -74,11 +74,11 @@ python gemvox.py
 
 ---
 
-## 🔑 Configuring Your Gemini API Key
+## Configuring Your Gemini API Key
 
 Gemvox requires a Google Gemini API key (free or paid tier from [Google AI Studio](https://aistudio.google.com/)).
 
-You can configure your key in any of three easy ways:
+You can configure your key in any of three ways:
 1. **Inside Gemvox Settings Tab (`Ctrl+6`)**: Paste your key into the API Key field, press **`Alt+C`** to test the connection, and press **`Alt+S`** to save.
 2. **Via `.env` file**: Create a `.env` file in the application directory:
    ```env
@@ -91,32 +91,38 @@ You can configure your key in any of three easy ways:
 
 ---
 
-## 🌟 Why Gemvox?
+## Why Gemvox?
 
 The official Google AI Studio web interface is feature-rich, but its deeply nested visual components, dynamic ARIA regions, unannounced sliders, and visual voice cards make it difficult and exhausting for screen reader users (NVDA, JAWS, Windows Narrator).
 
-**Gemvox** solves this with a screen reader first-class design:
-- **Native Accessible Controls**: Built with native Win32 controls via `wxPython`, offering full UI Automation (UIA) and MSAA support with zero unlabeled buttons.
-- **Direct Screen Reader Speech Announcements**: Announces synthesis status and progress directly through your active screen reader (NVDA, JAWS, ZDSR, PC Talker) without causing SAPI 5 speech collisions.
-- **Auditory Sound Cues**: Distinct, subtle earcons for generation start, completion, stop, and error events.
-- **100% Keyboard-Driven Workflow**: High-contrast mnemonic shortcuts (`Alt+...`) and standard global keys (`Ctrl+Enter`, `Alt+P`, `Alt+Q`, `Ctrl+S`).
-- **Resilient Multi-Model Fallback**: Automatically connects to the Universal AI Studio TTS endpoint (`v1beta`) with intelligent fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash, and 2.0 Flash models.
+**Gemvox** solves this with a screen-reader-first Universal Design architecture:
+- **Universal Design PySide6 & Native Win32 Text Areas**: Built on PySide6 with full UIA/MSAA metadata and native Win32 `RICHEDIT50W` multiline editors for accurate blank-line, word, and character navigation.
+- **Automatic Screen Reader Focus Recovery (v1.2.1)**: Automatically re-syncs `QAccessible` and Win32 focus when switching back to Gemvox (`Alt+Tab`) or closing dialogs so screen reader announcements remain reliable.
+- **Direct Screen Reader Speech Announcements**: Announces synthesis status and progress directly through your active screen reader (NVDA, JAWS, ZDSR, PC Talker) without SAPI 5 speech collisions.
+- **Auditory Sound Cues**: Distinct earcons for generation start, completion, stop, and error events.
+- **100% Keyboard-Driven Workflow**: High-contrast mnemonic shortcuts (`Alt+...`) and global keys (`Ctrl+Enter`, `Alt+P`, `Alt+Q`, `Ctrl+S`).
+- **Resilient Multi-Model Fallback**: Connects to the Universal AI Studio TTS endpoint (`v1beta`) with fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash, and 2.0 Flash models.
 - **Dual Interface**: Use the accessible graphical studio or the linear interactive command-line interface (`--cli`).
-- **Bilingual Localization (English & Thai)**: Complete interface and spoken screen reader announcements in both English and Thai (ภาษาไทย).
+- **Bilingual Localization (English & Thai)**: Complete interface and spoken screen reader announcements in both English and Thai.
 
 ---
 
-## 🎛️ Key Features & Capabilities
+## Key Features & Capabilities
 
 ### 1. Single-Speaker Text-to-Speech (`Ctrl+1`)
 - Recite verbatim text transcripts with natural phrasing and pacing.
 - **Sustained Delivery Styles (`Alt+Y`)**: Direct vocal performance using natural-language styles (e.g., *"cheerful and friendly"*, *"whispered urgently"*, *"calm and relaxed"*).
 - **Custom Style Presets**: Save and manage reusable style presets (`Alt+B` to browse, `Alt+C` to create).
 - **Inline Vocal Tags Dialog (`Alt+I`)**: Insert momentary expressive tags such as `<sigh>`, `<laugh>`, `<whisper>`, `<yawn>`, `<cough>`, and `<short pause>`.
-- **Text & Script Statistics (`Ctrl+I`)**: Instantly check character count, word count, line count, and estimated speech duration.
+- **Text & Script Statistics (`Ctrl+I`)**: Check character count, word count, line count, and estimated speech duration.
 - **Voice Audition (`Alt+U`)**: Audition any voice with a quick sample phrase before synthesizing long transcripts.
 
-### 2. Multi-Speaker Conversational Dialogue (`Ctrl+2`)
+### 2. Multi-Document & Google Docs Import (`Ctrl+O` & `Ctrl+G`)
+- **Local Document Import (`Ctrl+O`)**: Extract and load text directly into the active tab from `.txt`, `.md`, `.script`, `.csv`, `.log`, `.srt`, `.vtt`, **`.docx` (Word)**, **`.pdf`**, and **`.html` / `.htm`** files.
+- **Google Docs & Web URL Import (`Ctrl+G`)**: Fetch text from shared Google Docs links (`/document/d/...` or published `/pub` links) and web pages using `urllib` and `BeautifulSoup`.
+- **Permission Guidance**: If a Google Docs link is private or restricted, Gemvox detects the access block and displays clear step-by-step instructions to enable *"Anyone with the link -> Viewer"* sharing.
+
+### 3. Multi-Speaker Conversational Dialogue (`Ctrl+2`)
 - Write natural scripts using standard format:
   ```text
   Alice: Welcome back to our podcast! [cheerful and friendly]
@@ -125,7 +131,7 @@ The official Google AI Studio web interface is feature-rich, but its deeply nest
 - **Automatic Speaker Detection**: Detects all unique speaker names and automatically assigns voice mappings.
 - **Seamless Multi-Turn Audio**: Synthesizes multi-turn dialogue into a single, cohesive audio file.
 
-### 3. Studio Audio Player & Transport Deck
+### 4. Studio Audio Player & Transport Deck
 Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice Design**, and **History Dialog `Ctrl+H`**):
 - **Play / Pause / Resume (`Alt+P`)**: Non-blocking audio playback with dynamic button status.
 - **Stop (`Alt+Q`)**: Halts playback immediately and resets timeline to `00:00`.
@@ -135,28 +141,28 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 - **Playback Speed Selector (`Ctrl+Shift+P`)**: Cycle between `0.75x`, `1.0x (Normal)`, `1.25x`, `1.5x`, and `2.0x`.
 - **Loop Playback (`Ctrl+L`)**: Continuous looping for acoustic review and prompt tuning.
 
-### 4. Voice Design Studio (`Ctrl+3`)
+### 5. Voice Design Studio (`Ctrl+3`)
 - Create persistent vocal personas from natural-language descriptions.
 - Customize character age, vocal timbre, accent, and delivery (e.g., *"A warm astronomer in his 60s with a gentle British accent speaking with quiet wonder"*).
 - **Real-Time Voice Sync**: Newly created voices appear instantly across all voice dropdowns without restarting.
 
-### 5. Voice Replication (`Ctrl+4`)
+### 6. Voice Replication (`Ctrl+4`)
 - Replicate an adult speaker's voice using a 10–30 second clean reference WAV clip.
 - Built-in consent phrase helper with one-click clipboard copying.
 - Supports both stateful project storage (`voice_...`) and stateless keys (`voicekey_...`).
 
-### 6. Voice Library & Extended Catalog (`Ctrl+5`)
+### 7. Voice Library & Extended Catalog (`Ctrl+5`)
 - Browse all **30 Curated Studio Voices** (Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat) alongside your custom voices.
 - **Send to TTS (`Alt+Y`)**: Send any selected voice directly to the Single-Speaker synthesizer.
 - Query hundreds of voices from the online Gemini Extended Voice Library by language, gender, and domain.
 
-### 7. Recent Generations History (`Ctrl+H`)
+### 8. Recent Generations History (`Ctrl+H`)
 - Review all generated `.wav` takes in your output folder.
 - Replay takes, export copies (`Alt+S`), delete takes (`Alt+D`), or open the output folder in File Explorer (`Ctrl+Shift+O`).
 
 ---
 
-## ⌨️ Complete Keyboard Shortcuts Guide
+## Complete Keyboard Shortcuts Guide
 
 | Shortcut | Description |
 |---|---|
@@ -168,7 +174,8 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 | **`Ctrl+L`** | Toggle Loop Playback Mode |
 | **`Ctrl+Shift+P`** | Cycle Playback Speed (0.75x, 1.0x, 1.25x, 1.5x, 2.0x) |
 | **`Ctrl+S`** | Save current audio as WAV |
-| **`Ctrl+O`** | Open `.txt` text or dialogue script file |
+| **`Ctrl+O`** | Open document (`.txt`, `.md`, `.script`, `.docx`, `.pdf`, `.html`) into active tab |
+| **`Ctrl+G`** | Open Google Docs link or Web URL into active tab |
 | **`Ctrl+Shift+S`** | Save current text or dialogue script as `.txt` file |
 | **`Ctrl+H`** | Open Recent Generations History dialog |
 | **`Ctrl+Shift+O`** | Open Output Audio Folder in File Explorer |
@@ -188,9 +195,9 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 
 ---
 
-## 💻 CLI Commands (Command-Line Mode)
+## CLI Commands (Command-Line Mode)
 
-You can also use Gemvox as a powerful command-line tool:
+You can also use Gemvox as a command-line tool:
 
 ```powershell
 # Interactive accessible terminal menu
@@ -214,8 +221,10 @@ python gemvox.py update
 
 ---
 
-## 🔧 Technical Specifications
+## Technical Specifications
 
+- **GUI Framework**: `PySide6` (Universal Design Edition) with native Win32 `RICHEDIT50W` text editors and `QAccessible` focus recovery
+- **Document Parsing**: `python-docx` (`.docx`), `pypdf` & `PySide6.QtPdf` (`.pdf`), `beautifulsoup4` (`.html`), `urllib.request` (Google Docs & web URLs)
 - **SDK**: `google-genai` (Targeting `v1beta` endpoint for speech synthesis)
 - **Supported Models**: `gemini-2.5-flash-preview-tts` (Default), `gemini-3.1-flash-tts-preview`, `gemini-2.5-pro-preview-tts`, `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts`, `gemini-2.0-flash`
 - **Audio Output**: 24kHz 16-bit Mono Linear PCM WAV
@@ -224,7 +233,7 @@ python gemvox.py update
 
 ---
 
-## 📄 License & Attribution
+## License & Attribution
 
 Copyright (c) 2026 Natthaphong Pradit. Released under the MIT License.
 Gemini is a trademark of Google LLC.

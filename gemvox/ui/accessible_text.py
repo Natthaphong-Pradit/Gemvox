@@ -23,7 +23,7 @@ import weakref
 import win32con
 import win32gui
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QKeyEvent, QWindow
+from PySide6.QtGui import QAccessible, QAccessibleEvent, QFont, QKeyEvent, QWindow
 from PySide6.QtWidgets import QApplication, QFrame, QVBoxLayout, QWidget
 
 from gemvox.ui.theme import clean_mnemonic, get_qfont
@@ -327,6 +327,18 @@ class AccessibleTextArea(QFrame):
             if not self._hwnd or not self.isVisible():
                 return
             if QApplication.focusWidget() is not self:
+                return
+        except RuntimeError:
+            return
+        if _user32.GetFocus() != self._hwnd:
+            _user32.SetFocus(self._hwnd)
+        else:
+            _user32.NotifyWinEvent(0x8005, self._hwnd, _OBJID_CLIENT, 0)  # EVENT_OBJECT_FOCUS
+
+    def refresh_win32_focus(self, force_nudge: bool = False):
+        """Ensure native RICHEDIT50W holds Win32 focus without focus ping-pong."""
+        try:
+            if not self._hwnd or not self.isVisible():
                 return
         except RuntimeError:
             return

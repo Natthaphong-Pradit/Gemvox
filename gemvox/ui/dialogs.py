@@ -1165,3 +1165,134 @@ class HelpDialog(_BaseStudioDialog):
         res = dlg.exec()
         if res == WelcomeTourDialog.ID_GO_SETTINGS:
             self.done(WelcomeTourDialog.ID_GO_SETTINGS)
+
+
+class OpenGoogleDocsDialog(_BaseStudioDialog):
+    """Accessible dialog for loading text from a Google Docs link or web page URL."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, tr("dlg_open_url_title"))
+        self.resize(560, 220)
+        self.setMinimumWidth(460)
+        self.loaded_text: str = ""
+        self.loaded_source: str = ""
+        self._loading = False
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 14)
+        layout.setSpacing(10)
+
+        lbl_url = QLabel(tr("lbl_open_url_prompt"), self)
+        style_label(lbl_url, "section")
+        layout.addWidget(lbl_url)
+
+        self.txt_url = QLineEdit(self)
+        self.txt_url.setPlaceholderText("https://docs.google.com/document/d/...")
+        apply_accessible(
+            self.txt_url,
+            name=tr("lbl_open_url_prompt"),
+            description=tr("lbl_open_url_hint"),
+            label=lbl_url,
+        )
+        layout.addWidget(self.txt_url)
+
+        self.lbl_hint = QLabel(tr("lbl_open_url_hint"), self)
+        self.lbl_hint.setWordWrap(True)
+        style_label(self.lbl_hint, "muted")
+        layout.addWidget(self.lbl_hint)
+
+        layout.addStretch(1)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.addStretch(1)
+
+        self.btn_load = QPushButton(tr("btn_load_url"), self)
+        self.btn_load.setDefault(True)
+        style_button(self.btn_load, "primary")
+
+        self.btn_cancel = QPushButton(tr("btn_cancel"), self)
+        style_button(self.btn_cancel, "secondary")
+
+        btn_row.addWidget(self.btn_load)
+        btn_row.addWidget(self.btn_cancel)
+        layout.addLayout(btn_row)
+
+        self.btn_load.clicked.connect(self.on_load)
+        self.btn_cancel.clicked.connect(self.reject)
+        self.txt_url.returnPressed.connect(self.on_load)
+        self.txt_url.setFocus()
+
+    def keyPressEvent(self, event: QKeyEvent):
+        ch = self._alt_char(event)
+        if ch == "U":
+            self.txt_url.setFocus()
+            return
+        if ch == "L":
+            if self.btn_load.isEnabled():
+                self.on_load()
+            return
+        super().keyPressEvent(event)
+
+    def _set_busy(self, busy: bool):
+        self._loading = busy
+        self.txt_url.setEnabled(not busy)
+        self.btn_load.setEnabled(not busy)
+
+    def on_load(self, *args):
+        if self._loading:
+            return
+        url = self.txt_url.text().strip()
+        if not url:
+            msg = tr("gdocs_invalid_url_msg")
+            announcer.announce(msg)
+            QMessageBox.warning(self, tr("dlg_open_url_title"), msg)
+            self.txt_url.setFocus()
+            return
+
+        self._set_busy(True)
+        announcer.announce(tr("announce_loading_url"))
+
+        def _worker():
+            from gemvox.core.document_loader import GoogleDocsAccessError, load_document_from_url
+
+            try:
+                text, source = load_document_from_url(url)
+                call_after(self._on_fetch_success, text, source)
+            except GoogleDocsAccessError as e:
+                call_after(self._on_gdocs_error, e.reason, str(e))
+            except Exception as e:
+                call_after(self._on_generic_error, str(e))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_fetch_success(self, text: str, source: str):
+        self._set_busy(False)
+        self.loaded_text = text
+        self.loaded_source = source
+        self.accept()
+
+    def _on_gdocs_error(self, reason: str, detail: str):
+        self._set_busy(False)
+        if reason == "restricted":
+            title = tr("gdocs_restricted_title")
+            msg = tr("gdocs_restricted_msg")
+        elif reason == "not_found":
+            title = tr("dlg_open_url_title")
+            msg = tr("gdocs_not_found_msg")
+        elif reason == "invalid_url":
+            title = tr("dlg_open_url_title")
+            msg = tr("gdocs_invalid_url_msg")
+        else:
+            title = tr("dlg_open_url_title")
+            msg = tr("announce_script_error", error=detail)
+        announcer.announce(title)
+        QMessageBox.warning(self, title, msg)
+        self.txt_url.setFocus()
+
+    def _on_generic_error(self, error_str: str):
+        self._set_busy(False)
+        msg = tr("announce_script_error", error=error_str)
+        announcer.announce(msg)
+        QMessageBox.warning(self, tr("dlg_open_url_title"), msg)
+        self.txt_url.setFocus()
