@@ -63,7 +63,7 @@ def _verify_accessibility(root_widget) -> tuple[bool, str]:
 
 def main():
     print("=" * 65)
-    print(" GEMVOX v1.2.1 DIAGNOSTIC & UNIVERSAL DESIGN TEST")
+    print(" GEMVOX v1.2.2 DIAGNOSTIC & UNIVERSAL DESIGN TEST")
     print("=" * 65)
     all_ok = True
 
@@ -320,9 +320,61 @@ def main():
         print_result("Document Loader (TXT, HTML, DOCX, PDF, Google Docs)", False, str(e))
         all_ok = False
 
+    # 9. Security (DPAPI + Migration + Honeypot + Env Priority) & Progress Tracker & UTF-8 0x92
+    try:
+        import json
+        import tempfile
+        from pathlib import Path
+        from gemvox.security import (
+            DECOY_API_KEY,
+            decrypt_secret,
+            encrypt_secret,
+            is_decoy_api_key,
+            load_encrypted_api_key,
+            save_encrypted_api_key,
+        )
+        from gemvox.core.document_loader import read_text_with_fallback
+        from gemvox.ui.progress_tracker import SynthesisProgressTracker, estimate_synthesis_seconds
+
+        # 9a. DPAPI round-trip
+        sample_key = "AIzaSyTestRoundTripKey1234567890"
+        enc = encrypt_secret(sample_key)
+        assert enc and enc != sample_key
+        assert decrypt_secret(enc) == sample_key
+
+        # 9b. Separate secrets.dat save/load + decoy check
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sec_path = Path(tmpdir) / "secrets.dat"
+            assert save_encrypted_api_key(sec_path, sample_key) is True
+            assert load_encrypted_api_key(sec_path) == sample_key
+            assert is_decoy_api_key(DECOY_API_KEY) is True
+            assert is_decoy_api_key(sample_key) is False
+
+            # 9c. UTF-8 0x92 (cp1252 smart apostrophe) fallback
+            win1252_file = Path(tmpdir) / "smart_quote.txt"
+            win1252_file.write_bytes(b"It\x92s a Gemvox test")
+            decoded = read_text_with_fallback(win1252_file)
+            assert "Gemvox test" in decoded and "\u2019" in decoded
+
+        # 9d. Progress estimation formula
+        assert abs(estimate_synthesis_seconds(0) - 1.5) < 1e-6
+        assert abs(estimate_synthesis_seconds(250) - 6.5) < 1e-6
+        tracker = SynthesisProgressTracker()
+        tracker.start(250)
+        assert tracker.is_running is True
+        tracker.finish(success=True)
+        assert tracker.is_running is False and tracker.percent == 100
+
+        print_result("Security (DPAPI & Decoy), UTF-8 Fallback & Progress Tracker", True)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print_result("Security (DPAPI & Decoy), UTF-8 Fallback & Progress Tracker", False, str(e))
+        all_ok = False
+
     print("=" * 65)
     if all_ok:
-        print(" ALL DIAGNOSTIC TESTS PASSED! Gemvox v1.2.1 is ready to run.")
+        print(" ALL DIAGNOSTIC TESTS PASSED! Gemvox v1.2.2 is ready to run.")
         print(" You can start Gemvox normally using 'Gemvox.bat' or 'python gemvox.py'.")
     else:
         print(" SOME CHECKS FAILED. Please review the missing dependencies above.")

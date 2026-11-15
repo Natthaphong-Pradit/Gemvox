@@ -9,7 +9,6 @@
 > [!TIP]
 > **No Python installation or command-line setup is required.** Pre-compiled, self-contained Windows packages are available on the GitHub Releases page.
 **[Download Latest Gemvox Release](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
-=======
 👉 **[Download Latest Gemvox Release](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
 You can choose between two convenient download formats:
 
@@ -181,7 +180,8 @@ Integrated into every major tab (**Single-Speaker**, **Multi-Speaker**, **Voice 
 | **`Ctrl+Shift+S`** | Save current text or dialogue script as `.txt` file |
 | **`Ctrl+H`** | Open Recent Generations History dialog |
 | **`Ctrl+Shift+O`** | Open Output Audio Folder in File Explorer |
-| **`Ctrl+I`** | Announce Text & Script Statistics (words, characters, lines, duration) |
+| **`Ctrl+T`** | Announce Text & Script Statistics (words, characters, lines, duration) |
+| **`Ctrl+I`** | Announce Synthesis Progress & Remaining Time |
 | **`Ctrl+U`** | Check for Updates & Direct Auto-Installer from GitHub |
 | **`Ctrl+1` .. `Ctrl+6`** | Switch directly between Tabs 1 to 6 |
 | **`F1`** | Open Comprehensive Help & Accessibility Guide (6 Chapters) |

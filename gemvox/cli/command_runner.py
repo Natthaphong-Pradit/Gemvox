@@ -32,9 +32,9 @@ def handle_speak(args):
 def handle_dialogue(args):
     from gemvox.core.tts_engine import tts_engine
     from gemvox.core.audio_player import audio_player
+    from gemvox.core.document_loader import read_text_with_fallback
 
-    with open(args.file, "r", encoding="utf-8") as f:
-        script = f.read()
+    script = read_text_with_fallback(args.file)
 
     turns, speakers = tts_engine.parse_dialogue_script(script)
     print(f"Parsed {len(turns)} turns across {len(speakers)} speakers: {', '.join(speakers)}")

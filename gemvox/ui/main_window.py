@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QStatusBar,
     QTabWidget,
     QTextEdit,
@@ -31,6 +32,7 @@ from gemvox.ui.voice_design_panel import VoiceDesignPanel
 from gemvox.ui.voice_replication_panel import VoiceReplicationPanel
 from gemvox.ui.voice_library_panel import VoiceLibraryPanel
 from gemvox.ui.settings_panel import SettingsPanel
+from gemvox.ui.progress_tracker import SynthesisProgressTracker
 from gemvox.ui.accessible_text import AccessibleTextArea
 from gemvox.ui.dialogs import (
     HelpDialog,
@@ -247,6 +249,7 @@ class MainWindow(QMainWindow):
         m_create_style = tools_menu.addAction(tr("menu_create_style"))
         tools_menu.addSeparator()
         m_stats = tools_menu.addAction(tr("menu_text_stats"))
+        m_synth_progress = tools_menu.addAction(tr("menu_synth_progress"))
         tools_menu.addSeparator()
         m_tour = tools_menu.addAction(tr("menu_welcome_tour"))
 
@@ -298,6 +301,7 @@ class MainWindow(QMainWindow):
         m_style.triggered.connect(self.on_menu_style)
         m_create_style.triggered.connect(self.on_menu_create_style)
         m_stats.triggered.connect(self.on_menu_text_stats)
+        m_synth_progress.triggered.connect(self.on_menu_synth_progress)
         m_tour.triggered.connect(self._show_first_run_welcome_tour)
 
         m_help.triggered.connect(self.on_menu_help)
@@ -349,7 +353,7 @@ class MainWindow(QMainWindow):
         ws_layout.addWidget(self.tabs, 1)
         root_layout.addLayout(ws_layout, 1)
 
-        # 3-Segment Accessible Status Bar
+        # 3-Segment Accessible Status Bar + Visual Synthesis Progress
         status_bar = QStatusBar(self)
         self.setStatusBar(status_bar)
         self.lbl_status_main = QLabel(tr("status_ready_main"), status_bar)
@@ -359,7 +363,24 @@ class MainWindow(QMainWindow):
         style_label(self.lbl_status_engine, "muted")
         style_label(self.lbl_status_sr, "muted")
 
+        self.progress_tracker = SynthesisProgressTracker(self)
+        self.progress_bar = QProgressBar(status_bar)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFixedWidth(160)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setFocusPolicy(Qt.NoFocus)
+        self.progress_bar.setAccessibleName(tr("lbl_synth_progress"))
+        self.progress_bar.setVisible(False)
+        self.progress_tracker.progress_changed.connect(self.progress_bar.setValue)
+        self.progress_tracker.active_changed.connect(self.progress_bar.setVisible)
+
+        self.tab_single.progress_tracker = self.progress_tracker
+        self.tab_multi.progress_tracker = self.progress_tracker
+
         status_bar.addWidget(self.lbl_status_main, 3)
+        status_bar.addWidget(self.progress_bar, 0)
         status_bar.addWidget(self.lbl_status_engine, 2)
         status_bar.addPermanentWidget(self.lbl_status_sr, 1)
 
@@ -427,7 +448,7 @@ class MainWindow(QMainWindow):
         if not ctrl and not alt and not shift and key in (Qt.Key_F1, Qt.Key_F7, Qt.Key_F8, Qt.Key_F9, Qt.Key_F10):
             return True
 
-        if ctrl and not alt and not shift and key in (Qt.Key_O, Qt.Key_G, Qt.Key_S, Qt.Key_H, Qt.Key_I, Qt.Key_U, Qt.Key_L):
+        if ctrl and not alt and not shift and key in (Qt.Key_O, Qt.Key_G, Qt.Key_S, Qt.Key_H, Qt.Key_I, Qt.Key_T, Qt.Key_U, Qt.Key_L):
             return True
 
         if ctrl and shift and not alt and key in (Qt.Key_S, Qt.Key_O, Qt.Key_P):
@@ -539,6 +560,9 @@ class MainWindow(QMainWindow):
                 self.on_menu_history()
                 return True
             if key == Qt.Key_I:
+                self.on_menu_synth_progress()
+                return True
+            if key == Qt.Key_T:
                 self.on_menu_text_stats()
                 return True
             if key == Qt.Key_U:
@@ -1013,6 +1037,9 @@ class MainWindow(QMainWindow):
             self.tab_multi.on_announce_stats()
         else:
             self.tab_single.on_announce_stats()
+
+    def on_menu_synth_progress(self, *args):
+        self.progress_tracker.announce_status()
 
     def on_menu_play(self, *args):
         sel = self.tabs.currentIndex()

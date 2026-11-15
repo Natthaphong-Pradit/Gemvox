@@ -3,7 +3,7 @@ import subprocess
 import sys
 import threading
 import webbrowser
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -96,6 +96,22 @@ class SettingsPanel(QWidget):
         self.txt_key.setEchoMode(QLineEdit.Password)
         apply_accessible(self.txt_key, name=tr("lbl_api_key"), label=lbl_key)
 
+        self.chk_show_key = QCheckBox(tr("chk_show_api_key"), cred_box)
+        apply_accessible(
+            self.chk_show_key,
+            name=tr("chk_show_api_key"),
+            description=tr("chk_show_api_key_desc"),
+        )
+        self._key_hide_timer = QTimer(self)
+        self._key_hide_timer.setSingleShot(True)
+        self._key_hide_timer.timeout.connect(self._on_auto_hide_key)
+        self.chk_show_key.toggled.connect(self._on_toggle_show_key)
+
+        key_input_row = QHBoxLayout()
+        key_input_row.setSpacing(6)
+        key_input_row.addWidget(self.txt_key, 1)
+        key_input_row.addWidget(self.chk_show_key, 0)
+
         key_btn_row = QHBoxLayout()
         key_btn_row.setSpacing(6)
         self.btn_test_key = QPushButton(tr("btn_test_conn"), cred_box)
@@ -106,7 +122,7 @@ class SettingsPanel(QWidget):
         key_btn_row.addWidget(self.btn_get_key)
 
         grid.addWidget(lbl_key, 0, 0)
-        grid.addWidget(self.txt_key, 0, 1)
+        grid.addLayout(key_input_row, 0, 1)
         grid.addLayout(key_btn_row, 0, 2)
 
         # 2. Output folder
@@ -228,6 +244,26 @@ class SettingsPanel(QWidget):
                 break
         if choices:
             self.combo_def_voice.setCurrentIndex(sel_v)
+
+    def _on_toggle_show_key(self, checked: bool):
+        """Toggle API key visibility and auto-hide after 10 seconds when shown."""
+        if checked:
+            self.txt_key.setEchoMode(QLineEdit.Normal)
+            self._key_hide_timer.start(10000)
+            announcer.announce(tr("announce_api_key_shown"))
+        else:
+            self._key_hide_timer.stop()
+            self.txt_key.setEchoMode(QLineEdit.Password)
+            announcer.announce(tr("announce_api_key_hidden"))
+
+    def _on_auto_hide_key(self):
+        """Automatically re-mask the API key after 10 seconds."""
+        if self.chk_show_key.isChecked():
+            self.chk_show_key.blockSignals(True)
+            self.chk_show_key.setChecked(False)
+            self.chk_show_key.blockSignals(False)
+        self.txt_key.setEchoMode(QLineEdit.Password)
+        announcer.announce(tr("announce_api_key_auto_hidden"))
 
     def on_get_api_key(self, *args):
         """Open Google AI Studio Get API Key page directly in the default browser."""

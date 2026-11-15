@@ -9,7 +9,14 @@ except ImportError:
     def load_dotenv(*args, **kwargs):
         return False
 
-CONFIG_SCHEMA_VERSION = 2
+from gemvox.security import (
+    DECOY_API_KEY,
+    is_decoy_api_key,
+    load_encrypted_api_key,
+    save_encrypted_api_key,
+)
+
+CONFIG_SCHEMA_VERSION = 3
 
 
 def _get_app_base_dir() -> Path:
@@ -47,6 +54,7 @@ def _resolve_paths():
 
 
 CONFIG_DIR, CONFIG_FILE, DEFAULT_OUTPUT_DIR, IS_PORTABLE_MODE = _resolve_paths()
+SECRETS_FILE = CONFIG_DIR / "secrets.dat"
 
 DEFAULT_CONFIG = {
     "config_version": CONFIG_SCHEMA_VERSION,
@@ -90,7 +98,19 @@ class Config:
         self.data["custom_styles"] = []
         self._voices_listeners = []
         self._existed_before_load = False
+        self._migrated_legacy_key = False
         self.load()
+
+    @staticmethod
+    def _read_json_with_fallback(path: Path) -> dict:
+        """Read JSON file trying UTF-8 first, then Windows encodings with replace fallback."""
+        raw = path.read_bytes()
+        for enc in ("utf-8-sig", "utf-8", "cp874", "cp1252", "latin-1"):
+            try:
+                return json.loads(raw.decode(enc))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+        return json.loads(raw.decode("utf-8", errors="replace"))
 
     def _find_legacy_config_files(self) -> list[Path]:
         """Discover any previous config.json files from older versions or locations."""
@@ -141,11 +161,19 @@ class Config:
         if not isinstance(self.data.get("custom_styles"), list):
             self.data["custom_styles"] = []
 
-        # If a user upgrading from v1.1.0-v1.1.4 already had an API key or custom items saved,
+        # Seamless migration: if an older config.json contains a plain-text API key,
+        # encrypt it with DPAPI into secrets.dat and replace config.json's copy with a decoy.
+        raw_api_key = str(loaded_dict.get("api_key", "")).strip()
+        if raw_api_key and not is_decoy_api_key(raw_api_key):
+            if save_encrypted_api_key(SECRETS_FILE, raw_api_key):
+                self._migrated_legacy_key = True
+            self.data["api_key"] = DECOY_API_KEY
+
+        # If a user upgrading from v1.1.0-v1.2.1 already had an API key or custom items saved,
         # mark first_run_completed as True if it wasn't explicitly set in the old schema.
         if "first_run_completed" not in loaded_dict:
             has_existing_setup = bool(
-                str(loaded_dict.get("api_key", "")).strip()
+                (raw_api_key and not is_decoy_api_key(raw_api_key))
                 or loaded_dict.get("custom_voices")
                 or loaded_dict.get("custom_styles")
             )
@@ -156,12 +184,12 @@ class Config:
 
     def load(self):
         loaded_any = False
+        self._migrated_legacy_key = False
 
         # 1. Try primary config file first
         if CONFIG_FILE.is_file():
             try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    saved = json.load(f)
+                saved = self._read_json_with_fallback(CONFIG_FILE)
                 self._merge_and_migrate(saved)
                 loaded_any = True
                 self._existed_before_load = True
@@ -174,8 +202,7 @@ class Config:
                 if legacy_path == CONFIG_FILE:
                     continue
                 try:
-                    with open(legacy_path, "r", encoding="utf-8") as f:
-                        saved = json.load(f)
+                    saved = self._read_json_with_fallback(legacy_path)
                     self._merge_and_migrate(saved)
                     loaded_any = True
                     self._existed_before_load = True
@@ -185,10 +212,17 @@ class Config:
                 except Exception:
                     pass
 
-        # 3. Check environment variable for API key fallback
-        env_key = os.getenv("GEMINI_API_KEY", "").strip()
-        if env_key and not self.data.get("api_key"):
-            self.data["api_key"] = env_key
+        # 3. If a plain-text key was migrated out of primary config.json,
+        #    rewrite config.json (and scrub .bak) immediately so no plain-text key remains on disk.
+        if self._migrated_legacy_key:
+            self.save()
+            bak_file = CONFIG_FILE.with_suffix(".json.bak")
+            if bak_file.is_file() and CONFIG_FILE.is_file():
+                try:
+                    shutil.copy2(CONFIG_FILE, bak_file)
+                except Exception:
+                    pass
+            self._migrated_legacy_key = False
 
     def save(self):
         """Atomically save configuration with automatic backup (.bak) for safety."""
@@ -212,10 +246,21 @@ class Config:
             print(f"Error saving config: {e}")
 
     def get(self, key, default=None):
+        if key == "api_key":
+            return self.api_key or default
         return self.data.get(key, default)
 
     def set(self, key, value, auto_save: bool = True):
-        self.data[key] = value
+        if key == "api_key":
+            clean = str(value or "").strip()
+            if clean and not is_decoy_api_key(clean):
+                save_encrypted_api_key(SECRETS_FILE, clean)
+                self.data["api_key"] = DECOY_API_KEY
+            else:
+                save_encrypted_api_key(SECRETS_FILE, "")
+                self.data["api_key"] = ""
+        else:
+            self.data[key] = value
         if auto_save:
             self.save()
 
@@ -239,12 +284,16 @@ class Config:
 
     @property
     def api_key(self) -> str:
-        return (self.data.get("api_key") or os.getenv("GEMINI_API_KEY", "")).strip()
+        # 1. Prioritize environment variable (from .env or System Env) for CLI/server automation
+        env_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if env_key:
+            return env_key
+        # 2. Fall back to machine/user-bound DPAPI encrypted secrets file
+        return load_encrypted_api_key(SECRETS_FILE)
 
     @api_key.setter
     def api_key(self, value: str):
-        self.data["api_key"] = value.strip()
-        self.save()
+        self.set("api_key", value, auto_save=True)
 
     @property
     def output_dir(self) -> Path:

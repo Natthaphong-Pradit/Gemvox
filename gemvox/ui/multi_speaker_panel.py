@@ -57,6 +57,7 @@ class MultiSpeakerPanel(QWidget):
         self.last_saved_path = None
         self.speaker_combos: dict[str, QComboBox] = {}
         self._voices_cache = []
+        self.progress_tracker = None
         self.setAccessibleName(clean_mnemonic(tr("tab_multi")))
         self._init_ui()
         config.add_voices_listener(self._on_voices_changed)
@@ -281,6 +282,9 @@ class MultiSpeakerPanel(QWidget):
 
         self.btn_generate.setEnabled(False)
         self.lbl_status.setText(tr("status_generating_multi", count=len(speakers)))
+        has_tracker = self.progress_tracker is not None
+        if has_tracker:
+            self.progress_tracker.start(len(script))
 
         def _worker():
             try:
@@ -288,11 +292,15 @@ class MultiSpeakerPanel(QWidget):
                     turns=turns,
                     speaker_voice_map=speaker_voice_map,
                     model=model_id,
+                    announce_start=not has_tracker,
+                    announce_done=not has_tracker,
                 )
                 self.last_audio_bytes = wav_bytes
                 self.last_saved_path = out_path
 
                 def _ui_update():
+                    if has_tracker:
+                        self.progress_tracker.finish(success=True)
                     self.btn_generate.setEnabled(True)
                     self.btn_save.setEnabled(True)
                     self.player_bar.set_audio_ready(True, wav_bytes)
@@ -303,6 +311,8 @@ class MultiSpeakerPanel(QWidget):
                 call_after(_ui_update)
             except Exception as e:
                 def _error_update():
+                    if has_tracker:
+                        self.progress_tracker.finish(success=False)
                     self.btn_generate.setEnabled(True)
                     self.lbl_status.setText(tr("status_error", error=e))
 

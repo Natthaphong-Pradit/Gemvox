@@ -554,7 +554,9 @@ class TTSEngine:
         voice: str = "Kore",
         style: Optional[str] = None,
         model: str = "gemini-2.5-flash-preview-tts",
-        output_filepath: Optional[str] = None
+        output_filepath: Optional[str] = None,
+        announce_start: bool = True,
+        announce_done: bool = True,
     ) -> Tuple[bytes, str, float]:
         """
         Synthesizes single-speaker audio with automatic endpoint/model fallback and
@@ -568,7 +570,8 @@ class TTSEngine:
         client = client_manager.get_client()
 
         announcer.play_sound("start")
-        announcer.announce(tr("announce_synthesizing_single", voice=voice))
+        if announce_start:
+            announcer.announce(tr("announce_synthesizing_single", voice=voice))
 
         start_time = time.time()
         candidates = self._get_candidate_models(model, client)
@@ -615,7 +618,8 @@ class TTSEngine:
             f.write(wav_bytes)
 
         announcer.play_sound("success")
-        announcer.announce(tr("announce_single_ready", elapsed=elapsed, duration=duration))
+        if announce_done:
+            announcer.announce(tr("announce_single_ready", elapsed=elapsed, duration=duration))
 
         return wav_bytes, out_path, duration
 
@@ -875,7 +879,9 @@ class TTSEngine:
         turns: List[Dict[str, str]],
         speaker_voice_map: Dict[str, str],
         model: str = "gemini-2.5-flash-preview-tts",
-        output_filepath: Optional[str] = None
+        output_filepath: Optional[str] = None,
+        announce_start: bool = True,
+        announce_done: bool = True,
     ) -> Tuple[bytes, str, float]:
         """
         Synthesizes multi-speaker dialogue with automatic model fallback on 404.
@@ -892,7 +898,8 @@ class TTSEngine:
         speakers_count = len(speaker_voice_map)
         turns_count = len(turns)
         announcer.play_sound("start")
-        announcer.announce(tr("announce_synthesizing_multi", speakers=speakers_count, turns=turns_count))
+        if announce_start:
+            announcer.announce(tr("announce_synthesizing_multi", speakers=speakers_count, turns=turns_count))
 
         start_time = time.time()
         candidates = self._get_candidate_models(model, client)
@@ -949,7 +956,8 @@ class TTSEngine:
             f.write(wav_bytes)
 
         announcer.play_sound("success")
-        announcer.announce(tr("announce_multi_ready", elapsed=elapsed, duration=duration))
+        if announce_done:
+            announcer.announce(tr("announce_multi_ready", elapsed=elapsed, duration=duration))
 
         return wav_bytes, out_path, duration
 

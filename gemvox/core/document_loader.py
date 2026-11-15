@@ -81,15 +81,18 @@ def _normalize_text(text: str) -> str:
     return cleaned.strip()
 
 
-def _read_text_with_fallback(path: Path) -> str:
+def read_text_with_fallback(path: Path | str) -> str:
     """Read a plain-text file trying UTF-8 first, then common Windows/Thai encodings."""
-    raw = path.read_bytes()
+    raw = Path(path).read_bytes()
     for enc in ("utf-8-sig", "utf-8", "cp874", "tis-620", "cp1252", "latin-1"):
         try:
             return _normalize_text(raw.decode(enc))
         except UnicodeDecodeError:
             continue
     return _normalize_text(raw.decode("utf-8", errors="replace"))
+
+
+_read_text_with_fallback = read_text_with_fallback
 
 
 class _FallbackHTMLTextExtractor(HTMLParser):
