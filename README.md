@@ -8,13 +8,9 @@
 
 > [!TIP]
 > **No Python installation or command-line setup is required.** Pre-compiled, self-contained Windows packages are available on the GitHub Releases page.
-
-<<<<<<< HEAD
-**[Download Latest Gemvox Release (v1.2.1)](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
+**[Download Latest Gemvox Release](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
 =======
 👉 **[Download Latest Gemvox Release](https://github.com/Natthaphong-Pradit/Gemvox/releases/latest)**
->>>>>>> 80dd3097ec8576ed367271c0e70f53a8472dc6fe
-
 You can choose between two convenient download formats:
 
 ### 1. Standalone Single-File Executable (`Gemvox_Standalone.exe`)
@@ -28,11 +24,8 @@ You can choose between two convenient download formats:
 - **Pre-bundled Screen Reader DLLs**: Includes 32-bit and 64-bit client libraries for NVDA (`nvdaControllerClient`), JAWS, and ZDSR out of the box.
 
 ### In-App Auto-Updater (`Ctrl+U`)
-<<<<<<< HEAD
-Gemvox features a built-in direct GitHub updater. Whenever a new version is released, press **`Ctrl+U`** inside Gemvox. The program checks `https://github.com/Natthaphong-Pradit/Gemvox`, downloads the latest update, and installs it automatically without losing your settings or audio files.
-=======
-Gemvox features a built-in direct GitHub updater. Whenever a new version is released, simply press **`Ctrl+U`** inside Gemvox, or when you launch program for the first time, it runs background update automaticly and brings the update window right infront on the screen. The program will check `https://github.com/Natthaphong-Pradit/Gemvox`, download the latest update, and reinstall it in place automatically without losing your settings or audio files.
->>>>>>> 80dd3097ec8576ed367271c0e70f53a8472dc6fe
+
+Gemvox features a built-in direct GitHub updater. Whenever a new version is released, simply press **`Ctrl+U`** inside Gemvox, or when you launch program for the first time, it runs background update automaticly and brings the update window right infront on the screen. The program will check `The Release Page`, download the latest update, and reinstall it in place automatically without losing your settings or audio files.
 
 ---
 
@@ -48,13 +41,9 @@ cd Gemvox
 
 ### 2. Automated One-Click Setup & Launch (Recommended)
 Double-click (or press Enter on) the provided batch launchers in File Explorer:
-<<<<<<< HEAD
 - **`Gemvox.bat`**: Automatically detects or creates the virtual environment (`venv`), installs missing dependencies from `requirements.txt`, and launches the Universal Design PySide6 GUI.
 - **`Test.bat`**: Runs the diagnostic test suite verifying Python runtime, PySide6, google-genai SDK, sounddevice drivers, document loaders, and accessibility metadata.
-=======
 - **`Gemvox.bat`**: Automatically detects or creates the virtual environment (`venv`), installs missing dependencies from `requirements.txt`, and launches the Accessible GUI.
-- **`Test.bat`**: Runs the comprehensive diagnostic test suite verifying Python runtime, pySide6, google-genai SDK, sounddevice drivers, and UI dialogs.
->>>>>>> 80dd3097ec8576ed367271c0e70f53a8472dc6fe
 - **`Gemvox_CLI.bat`**: Launches the accessible, linear interactive terminal menu.
 
 ### 3. Manual Virtual Environment Setup
@@ -90,14 +79,8 @@ python gemvox.py
 ## Configuring Your Gemini API Key
 
 Gemvox requires a Google Gemini API key (free or paid tier from [Google AI Studio](https://aistudio.google.com/)).
-
-<<<<<<< HEAD
-You can configure your key in any of three ways:
-1. **Inside Gemvox Settings Tab (`Ctrl+6`)**: Paste your key into the API Key field, press **`Alt+C`** to test the connection, and press **`Alt+S`** to save.
-=======
 You can configure your key in any of three easy ways:
 1. **Inside Gemvox Settings Tab (`Ctrl+6`)**: Paste your key into the API Key field, press **`Alt+C`** to optionally test the connection, and press **`Alt+S`** to save.
->>>>>>> 80dd3097ec8576ed367271c0e70f53a8472dc6fe
 2. **Via `.env` file**: Create a `.env` file in the application directory:
    ```env
    GEMINI_API_KEY=your_actual_api_key_here
@@ -113,7 +96,7 @@ You can configure your key in any of three easy ways:
 
 The official Google AI Studio web interface is feature-rich, but its deeply nested visual components, dynamic ARIA regions, unannounced sliders, and visual voice cards make it difficult and exhausting for screen reader users (NVDA, JAWS, Windows Narrator).
 
-<<<<<<< HEAD
+
 **Gemvox** solves this with a screen-reader-first Universal Design architecture:
 - **Universal Design PySide6 & Native Win32 Text Areas**: Built on PySide6 with full UIA/MSAA metadata and native Win32 `RICHEDIT50W` multiline editors for accurate blank-line, word, and character navigation.
 - **Automatic Screen Reader Focus Recovery (v1.2.1)**: Automatically re-syncs `QAccessible` and Win32 focus when switching back to Gemvox (`Alt+Tab`) or closing dialogs so screen reader announcements remain reliable.
@@ -121,14 +104,6 @@ The official Google AI Studio web interface is feature-rich, but its deeply nest
 - **Auditory Sound Cues**: Distinct earcons for generation start, completion, stop, and error events.
 - **100% Keyboard-Driven Workflow**: High-contrast mnemonic shortcuts (`Alt+...`) and global keys (`Ctrl+Enter`, `Alt+P`, `Alt+Q`, `Ctrl+S`).
 - **Resilient Multi-Model Fallback**: Connects to the Universal AI Studio TTS endpoint (`v1beta`) with fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash, and 2.0 Flash models.
-=======
-**Gemvox** solves this with a screen reader first-class design:
-- **Native Accessible Controls + Universal Design**: Built with native screen reader support and visual design for sighted and low vision users via `pySide6`, offering full UI Automation support with zero unlabeled buttons.
-- **Direct Screen Reader Speech Announcements**: Announces synthesis status and progress directly through your active screen reader (NVDA, JAWS, ZDSR, PC Talker) without causing SAPI 5 speech collisions.
-- **Auditory Sound Cues**: Distinct, subtle earcons for generation start, completion, stop, and error events.
-- **100% Keyboard-Driven Workflow**: High-contrast mnemonic shortcuts (`Alt+...`) and standard global keys (`Ctrl+Enter`, `Alt+P`, `Alt+Q`, `Ctrl+S`).
-- **Resilient Multi-Model Fallback**: Automatically connects to the Universal AI Studio TTS endpoint (`v1beta`) with intelligent fallback across Gemini 2.5 Flash, 3.1 Flash, 2.5 Pro, 3.8 Flash, and 2.0 Flash models.
->>>>>>> 80dd3097ec8576ed367271c0e70f53a8472dc6fe
 - **Dual Interface**: Use the accessible graphical studio or the linear interactive command-line interface (`--cli`).
 - **Bilingual Localization (English & Thai)**: Complete interface and spoken screen reader announcements in both English and Thai.
 
