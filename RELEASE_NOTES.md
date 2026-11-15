@@ -1,34 +1,35 @@
-# Gemvox v1.2.0: Universal Design Architecture (wxPython → PySide6)
+# Gemvox v1.2.1: Multi-Document Support & Screen Reader Focus Enhancement
 
-Major architectural upgrade under **Universal Design**, migrating Gemvox's desktop GUI from `wxPython` to `PySide6` (Qt6) to deliver a modern dark studio interface for sighted users while preserving 100% keyboard navigation and native Windows screen reader accessibility.
-
----
-
-## 🌟 What's New in v1.2.0
-
-### 1. 🏗️ Architecture Migration: wxPython → PySide6 (Qt6)
-- **Modern Qt6 GUI Foundation**: Replaced `wxPython` with `PySide6>=6.7.0` using the cross-platform Fusion style (`requirements.txt`, `gemvox.py`, `version_info.txt`).
-- **Complete UI & Dialog Rebuild**: Migrated all 6 studio tabs (`Single-Speaker`, `Multi-Speaker`, `Voice Design`, `Voice Replication`, `Voice Library`, `Settings`), the `AudioTransportBar`, and all 7 dialogs (`InlineTagDialog`, `CreateCustomStyleDialog`, `StylePresetDialog`, `GenerationHistoryDialog`, `UpdateDialog`, `WelcomeTourDialog`, `HelpDialog`) to PySide6.
-- **Thread-Safe UI Dispatching**: Replaced `wx.CallAfter` with a queued Qt signal dispatcher (`call_after`) for background TTS generation, audio playback transport updates, and update checks.
+Maintenance and feature release building on Gemvox's Universal Design PySide6 architecture, adding rich document and Google Docs import alongside smoother `QAccessible` screen reader focus recovery on Windows.
 
 ---
 
-### 2. 🎨 Universal Design: "Obsidian & Royal Gold 2.0" Theme
-- **High-Contrast Dark Studio UI**: Styled with deep obsidian surfaces (`#161A26`) and high-visibility `#E6B85C` Royal Gold `2px` focus rings so keyboard focus is always unmistakable for sighted and low-vision users alike.
-- **Clean Accessible Metadata**: Built `apply_accessible()`, `QLabel.setBuddy()`, and `clean_mnemonic()` in `gemvox/ui/theme.py` so `&` shortcut markers are stripped from screen reader names while preserving `Alt+<Key>` keyboard accelerators.
-- **Non-Focusable Custom Header**: Added `StudioHeaderBanner` (`QPainter`) for clean visual branding without adding clutter to keyboard `Tab` order.
+## What's New in v1.2.1
+
+### 1. More Document File Type Support (`Ctrl+O`)
+- **Expanded File Formats**: `File -> Open Document / Script File...` (`Ctrl+O`) now extracts clean text directly into the active tab (**Single-Speaker** or **Multi-Speaker**) from:
+  - **Word Documents (`.docx`)**: Extracts paragraphs and table contents via `python-docx` (with pure-stdlib `zipfile`/XML fallback).
+  - **PDF Documents (`.pdf`)**: Extracts multi-page text via `pypdf` (with `PySide6.QtPdf.QPdfDocument` fallback and clear warnings for password-protected PDFs).
+  - **HTML / Web Files (`.html`, `.htm`, `.xhtml`)**: Strips `<script>`, `<style>`, and non-content tags using `BeautifulSoup` (`beautifulsoup4`).
+  - **Plain Text & Scripts (`.txt`, `.md`, `.script`, `.csv`, `.log`, `.srt`, `.vtt`)**: Supports automatic encoding fallback (`UTF-8`, `CP874`/`TIS-620`, `CP1252`).
 
 ---
 
-### 3. ♿ Native Screen Reader Multiline Text (`RICHEDIT50W` Hybrid)
-- **Solves Qt6 Blank-Line Repetition**: Native Qt6 `QPlainTextEdit` / `QTextEdit` Windows UIA providers repeat the previous line when navigating blank lines. Gemvox's `AccessibleTextArea` (`gemvox/ui/accessible_text.py`) embeds Windows' native `RICHEDIT50W` (`msftedit.dll`) via `QWindow.fromWinId` + `QWidget.createWindowContainer`, ensuring NVDA and Windows screen readers announce `"blank"` accurately on empty lines and end-of-line.
-- **Read-Only Caret Navigation**: Enables full keyboard arrow navigation in read-only multiline areas including Help Guide (`F1`), Welcome Tour, Update Notes, and Consent Phrase.
-- **Dynamic MSAA/UIA Annotations & Focus Sync**: Uses `IAccPropServices::SetHwndPropStr` (`PROPID_ACC_NAME`, `PROPID_ACC_DESCRIPTION`) and plain-text paste mode (`TM_PLAINTEXT`), and synchronizes Win32/Qt focus on `Tab` / `Shift+Tab` transitions so leaving and returning to any text area always restores screen reader speech and caret tracking.
+### 2. Google Docs & Web URL Import (`Ctrl+G`)
+- **Direct Link Fetching**: Added `File -> Open Google Docs / Web URL...` (`Ctrl+G`) and `OpenGoogleDocsDialog` (`gemvox/ui/dialogs.py`) powered by `urllib.request` and `BeautifulSoup` in `gemvox/core/document_loader.py`.
+- **Google Docs Formats Supported**: Supports both standard share links (`/document/d/<ID>/...`) and published-to-web links (`/document/d/e/<ID>/pub`).
+- **Smart Permission Detection & Guidance**: Detects restricted/private Google Docs (HTTP `401`/`403` or redirects to `accounts.google.com` sign-in) and displays an accessible warning dialog with step-by-step instructions (in English and Thai) to set sharing to **"Anyone with the link -> Viewer"**.
+- **Non-Blocking Fetch**: Downloads and parses URLs in a background thread so the UI and screen reader remain responsive.
 
 ---
 
-### 4. ⌨️ Complete Keyboard Navigation & Shortcut Parity
-- **wx-Compatible `eventFilter` & `WndProc` Forwarding**: Preserves all existing studio shortcuts across both Qt widgets and `RICHEDIT50W` text areas:
-  - **Tab Switching**: `Ctrl+1..6`, `Alt+1..6`, `Ctrl+Tab`, `Ctrl+Shift+Tab`, `Ctrl+PageUp`, `Ctrl+PageDown`, plus `Left`/`Right` arrow navigation when focused on the tab bar.
-  - **Studio Actions**: `Ctrl+Enter` (Generate), `Alt+P` / `Alt+Q` (Playback), `F1` (Help Guide), `F7..F10`, `Ctrl+O/S/H/I/U/L`, `Ctrl+Shift+S/O/P`, `Alt+Shift+L`, and all per-tab `Alt+<Key>` mnemonics.
-- **Expanded Diagnostic Audit**: Updated `test_gemvox.py` to audit 92 interactive controls, tab switching, text editing operations, and all 7 dialogs under PySide6.
+### 3. Screen Reader & `QAccessible` Focus Recovery Enhancement
+- **Automatic Window-Switch Recovery**: Added `WindowActivate` focus tracking (`_last_focus_ref` and `_restore_accessibility_focus` in `gemvox/ui/main_window.py`) so switching away from Gemvox (`Alt+Tab`) and returning—or closing a modal dialog—gently re-syncs `QAccessible` / Win32 focus without focus ping-pong.
+- **Lightweight `refresh_accessible_focus()` Helper**: Added `refresh_accessible_focus()` in `gemvox/ui/theme.py` and `refresh_win32_focus()` in `gemvox/ui/accessible_text.py` to keep `RICHEDIT50W` and Qt widgets synchronized smoothly without stuttering or disrupting caret position.
+
+---
+
+### 4. Updated Documentation, Guides & Diagnostics
+- **Updated Help Guide (`F1`) & Welcome Tour**: Added `Ctrl+O` document formats, `Ctrl+G` Google Docs/URL workflow, and v1.2.1 `QAccessible` focus recovery notes in both English and Thai (`gemvox/ui/help_content.py`).
+- **Updated `README.md`**: Reflected PySide6 Universal Design architecture, v1.2.1 features, dependencies, and keyboard shortcuts with clean plain-text formatting.
+- **Expanded `test_gemvox.py`**: Added automated verification for `TXT`, `HTML`, `DOCX`, and `PDF` extraction, Google Docs URL parsing and restricted-access detection, `OpenGoogleDocsDialog` accessibility auditing (8 dialogs total), and `refresh_accessible_focus()` stability.
